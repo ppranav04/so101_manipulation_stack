@@ -1,0 +1,17 @@
+# colcon workspace outputs (normally outside this repo; listed in case of a build from the wrong folder)
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Editors
+.vscode/
+*.swp
+
+# OS
+.DS_Store
