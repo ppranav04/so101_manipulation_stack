@@ -1,0 +1,6 @@
+# Keep the build context small and avoid copying git history or local outputs.
+.git
+build/
+install/
+log/
+**/__pycache__/
