@@ -1,0 +1,49 @@
+name: CI
+
+# Run on every push and every pull request, on any branch.
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    # Run inside the official ROS 2 Jazzy image (Ubuntu 24.04 + ros-base),
+    # so CI matches your laptop's distro.
+    container: ros:jazzy
+
+    defaults:
+      run:
+        shell: bash  # needed so `source` works
+
+    steps:
+      # Put the repo where a workspace expects it: <ws>/src/<repo>
+      - name: Check out repository
+        uses: actions/checkout@v5
+        with:
+          path: src/so101_manipulation_stack
+
+      # Install everything listed in your package.xml files
+      # (including <test_depend> entries such as ament_cmake_gtest).
+      - name: Install dependencies
+        run: |
+          apt-get update
+          rosdep update
+          rosdep install --from-paths src --ignore-src -y
+
+      - name: Build
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          colcon build --event-handlers console_direct+
+
+      - name: Test
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          colcon test --event-handlers console_direct+
+
+      # `colcon test` exits 0 even when tests fail.
+      # `colcon test-result` exits non-zero on any failure, which turns CI red.
+      - name: Check test results
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          colcon test-result --verbose
