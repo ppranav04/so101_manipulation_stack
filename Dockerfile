@@ -13,13 +13,20 @@ ENV AMENT_CPPCHECK_ALLOW_SLOW_VERSIONS=1
 
 # Workspace layout matches the laptop and CI: <ws>/src/<repo>
 WORKDIR /so101_ws
-COPY . src/so101_manipulation_stack
+COPY so101_hardware/package.xml src/so101_manipulation_stack/so101_hardware/
+COPY so101_bringup/package.xml src/so101_manipulation_stack/so101_bringup/
+COPY so101_description/package.xml src/so101_manipulation_stack/so101_description/
+COPY so101_calibration/package.xml src/so101_manipulation_stack/so101_calibration/
+COPY so101_ik/package.xml src/so101_manipulation_stack/so101_ik/
+COPY so101_perception/package.xml src/so101_manipulation_stack/so101_perception/
 
 # Install everything declared in the package.xml files.
 RUN apt-get update \
     && rosdep update \
     && rosdep install --from-paths src --ignore-src -y \
     && rm -rf /var/lib/apt/lists/*
+
+COPY . src/so101_manipulation_stack
 
 # Build, test, and fail the image build if any test fails.
 RUN source /opt/ros/jazzy/setup.bash \
