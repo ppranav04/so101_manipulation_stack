@@ -2,7 +2,9 @@
 
 ROS 2 software stack for the **SO-101** 5-DOF arm: see an object on a table, pick it up, and place it.
 
-> **Status:** `v0.0-skeleton` (M0). Package skeletons, placeholder tests and CI only. No robot functionality yet.
+> **Status:** M1 (simulation) in progress. Latest release: `v0.0-skeleton`.
+
+![SO-101 model in RViz](docs/images/so101_rviz_view.png)
 
 ## Goals
 
@@ -36,17 +38,14 @@ ROS 2 software stack for the **SO-101** 5-DOF arm: see an object on a table, pic
 
 `so101_moveit_config` will be generated with the MoveIt Setup Assistant in M3.
 
-## Build and test
+## Acknowledgements
 
-```bash
-mkdir -p ~/so101_ws/src && cd ~/so101_ws/src
-git clone https://github.com/<your-username>/so101_manipulation_stack.git
-cd ~/so101_ws
-rosdep install --from-paths src --ignore-src -y
-colcon build
-colcon test
-colcon test-result --verbose
-```
+The robot description and meshes are derived from TheRobotStudio's
+[SO-ARM100](https://github.com/TheRobotStudio/SO-ARM100)
+(`Simulation/SO101`, commit
+[`5f6d2b8`](https://github.com/TheRobotStudio/SO-ARM100/tree/5f6d2b876a53a4872e405b991dd925556c9e38a4/Simulation/SO101)),
+used under the
+[Apache-2.0 license](https://github.com/TheRobotStudio/SO-ARM100/blob/5f6d2b876a53a4872e405b991dd925556c9e38a4/LICENSE).
 
 ## License
 
