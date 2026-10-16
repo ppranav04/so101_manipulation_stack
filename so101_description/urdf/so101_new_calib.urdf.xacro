@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+
 <!-- Generated using onshape-to-robot -->
 <!-- Onshape https://cad.onshape.com/documents/7715cc284bb430fe6dab4ffd/w/4fd0791b683777b02f8d975a/e/826c553ede3b7592eb9ca800 -->
 <!-- Derived from so101_new_calib.urdf: adds wrist camera mount + wrist camera (Hex-Nut 32x32 UVC module form factor) -->
-<robot name="so101_new_calib">
+<!-- Source: https://github.com/TheRobotStudio/SO-ARM100, Simulation/SO101, commit 5f6d2b876a53a4872e405b991dd925556c9e38a4, Apache-2.0-->
+
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="so101_new_calib">
 
   <!-- Materials -->
   <material name="3d_printed">
@@ -11,6 +14,10 @@
   <material name="sts3215">
     <color rgba="0.1 0.1 0.1 1.0"/>
   </material>
+
+  <!-- World Base -->
+  <link name="world">
+  </link>
 
   <!-- Link base -->
   <link name="base_link">
@@ -292,7 +299,6 @@
 
   <!-- Gripper frame (dummy link + fixed joint) -->
   <link name="gripper_frame_link">
-    <origin xyz="0 0 0" rpy="0 -0 0"/>
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <mass value="1e-9"/>
@@ -339,17 +345,6 @@
     <limit effort="10" velocity="10" lower="-0.174533" upper="1.74533"/>
   </joint>
 
-  <transmission name="gripper_trans">
-    <type>transmission_interface/SimpleTransmission</type>
-    <joint name="gripper">
-      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
-    </joint>
-    <actuator name="motor6">
-      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
-      <mechanicalReduction>1</mechanicalReduction>
-    </actuator>
-  </transmission>
-
   <!-- Joint from wrist to gripper -->
   <joint name="wrist_roll" type="revolute">
     <origin xyz="5.55112e-17 -0.0611 0.0181" rpy="1.5708 0.0486795 3.14159"/>
@@ -359,17 +354,6 @@
     <limit effort="10" velocity="10" lower="-2.74385" upper="2.84121"/>
   </joint>
 
-  <transmission name="wrist_roll_trans">
-    <type>transmission_interface/SimpleTransmission</type>
-    <joint name="wrist_roll">
-      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
-    </joint>
-    <actuator name="motor5">
-      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
-      <mechanicalReduction>1</mechanicalReduction>
-    </actuator>
-  </transmission>
-
   <!-- Joint from lower_arm to wrist -->
   <joint name="wrist_flex" type="revolute">
     <origin xyz="-0.1349 0.0052 3.62355e-17" rpy="4.02456e-15 8.67362e-16 -1.5708"/>
@@ -378,17 +362,6 @@
     <axis xyz="0 0 1"/>
     <limit effort="10" velocity="10" lower="-1.65806" upper="1.65806"/>
   </joint>
-
-  <transmission name="wrist_flex_trans">
-    <type>transmission_interface/SimpleTransmission</type>
-    <joint name="wrist_flex">
-      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
-    </joint>
-    <actuator name="motor4">
-      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
-      <mechanicalReduction>1</mechanicalReduction>
-    </actuator>
-  </transmission>
 
   <!-- Joint from upper_arm to lower_arm -->
   <!-- Note: 5-degree calibration offset applied to joint limits -->
@@ -400,17 +373,6 @@
     <limit effort="10" velocity="10" lower="-1.69" upper="1.69"/>
   </joint>
 
-  <transmission name="elbow_flex_trans">
-    <type>transmission_interface/SimpleTransmission</type>
-    <joint name="elbow_flex">
-      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
-    </joint>
-    <actuator name="motor3">
-      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
-      <mechanicalReduction>1</mechanicalReduction>
-    </actuator>
-  </transmission>
-
   <!-- Joint from shoulder to upper_arm -->
   <joint name="shoulder_lift" type="revolute">
     <origin xyz="-0.0303992 -0.0182778 -0.0542" rpy="-1.5708 -1.5708 0"/>
@@ -419,17 +381,6 @@
     <axis xyz="0 0 1"/>
     <limit effort="10" velocity="10" lower="-1.74533" upper="1.74533"/>
   </joint>
-
-  <transmission name="shoulder_lift_trans">
-    <type>transmission_interface/SimpleTransmission</type>
-    <joint name="shoulder_lift">
-      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
-    </joint>
-    <actuator name="motor2">
-      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
-      <mechanicalReduction>1</mechanicalReduction>
-    </actuator>
-  </transmission>
 
   <!-- Joint from base to shoulder -->
   <joint name="shoulder_pan" type="revolute">
@@ -440,16 +391,12 @@
     <limit effort="10" velocity="10" lower="-1.91986" upper="1.91986"/>
   </joint>
 
-  <transmission name="shoulder_pan_trans">
-    <type>transmission_interface/SimpleTransmission</type>
-    <joint name="shoulder_pan">
-      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
-    </joint>
-    <actuator name="motor1">
-      <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
-      <mechanicalReduction>1</mechanicalReduction>
-    </actuator>
-  </transmission>
+  <!-- Joint from world to base -->
+  <joint name="world_base_link" type="fixed">
+    <origin xyz = "0.0 0.0 0.0"/>
+    <parent link="world"/>
+    <child link="base_link"/>
+  </joint>
 
   <!-- Link wrist_camera_mount -->
   <link name="wrist_camera_mount_link">
