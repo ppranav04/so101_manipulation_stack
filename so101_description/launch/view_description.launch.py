@@ -28,7 +28,7 @@ def generate_launch_description():
                                 ' ',
                                 PathSubstitution(FindPackageShare('so101_description'))
                                 / 'urdf'
-                                / 'so101_new_calib.urdf.xacro'
+                                / 'so101.urdf.xacro'
                             ]
                         ), value_type=str)
                     }

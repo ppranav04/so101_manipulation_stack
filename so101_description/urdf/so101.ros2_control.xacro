@@ -1,0 +1,57 @@
+<?xml version="1.0"?>
+<!-- ros2_control block for SO-101. Same joints and interfaces for every backend;
+     only the hardware plugin changes with `hw`. -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Arm joint: position command; position + velocity state -->
+  <xacro:macro name="so101_arm_joint" params="name">
+    <joint name="${name}">
+      <command_interface name="position"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:macro name="so101_ros2_control" params="hw">
+    <ros2_control name="SO101System" type="system">
+
+      <hardware>
+        <xacro:if value="${hw == 'mock'}">
+          <plugin>mock_components/GenericSystem</plugin>
+          <!-- Derive velocity state from position commands (finite differences) -->
+          <param name="calculate_dynamics">true</param>
+        </xacro:if>
+        <xacro:if value="${hw == 'gz'}">
+          <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+        </xacro:if>
+        <xacro:if value="${hw == 'real'}">
+          <!-- Implemented in M2. Until then this plugin does not exist, so the
+               controller manager fails loudly at load time instead of
+               silently running something else. -->
+          <plugin>so101_hardware/SO101System</plugin>
+        </xacro:if>
+      </hardware>
+
+      <xacro:so101_arm_joint name="shoulder_pan"/>
+      <xacro:so101_arm_joint name="shoulder_lift"/>
+      <xacro:so101_arm_joint name="elbow_flex"/>
+      <xacro:so101_arm_joint name="wrist_flex"/>
+      <xacro:so101_arm_joint name="wrist_roll"/>
+
+      <!-- Gripper: position command; position + velocity + effort state.
+           Effort is a load proxy, not calibrated torque (see README). -->
+      <joint name="gripper">
+        <command_interface name="position"/>
+        <state_interface name="position">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+        <state_interface name="velocity"/>
+        <state_interface name="effort"/>
+      </joint>
+
+    </ros2_control>
+  </xacro:macro>
+
+</robot>

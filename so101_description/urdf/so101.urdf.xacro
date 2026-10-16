@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<!-- Top-level SO-101 description. Select the ros2_control backend with hw:=mock|gz|real -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="so101">
+
+  <xacro:arg name="hw" default="mock"/>
+
+  <xacro:include filename="$(find so101_description)/urdf/so101_arm.xacro"/>
+  <xacro:include filename="$(find so101_description)/urdf/so101.ros2_control.xacro"/>
+
+  <xacro:so101_ros2_control hw="$(arg hw)"/>
+
+</robot>
