@@ -2,6 +2,7 @@
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
 from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -14,6 +15,12 @@ def generate_launch_description():
         default_value='mock',
         choices=['mock', 'gz', 'real'],
         description='ros2_control backend',
+    )
+
+    rviz_arg = DeclareLaunchArgument(
+        'rviz',
+        default_value='true',
+        description='CI testing rviz diabled'
     )
 
     hw = LaunchConfiguration('hw')
@@ -74,14 +81,17 @@ def generate_launch_description():
         executable='rviz2',
         arguments=['-d', rviz_file],
         output='log',
+        condition=IfCondition(LaunchConfiguration('rviz')),
     )
 
     return LaunchDescription([
         hw_arg,
+        rviz_arg,
         robot_state_publisher,
         control_node,
         joint_state_broadcaster_spawner,
         arm_controller_spawner,
         gripper_controller_spawner,
         rviz,
+
     ])
