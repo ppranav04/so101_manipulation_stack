@@ -11,6 +11,9 @@ find_package(ament_cmake REQUIRED)
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
 
+find_package(launch_testing_ament_cmake REQUIRED)
+add_launch_test(test/test_mock_bringup.py TIMEOUT 120)
+
 install(DIRECTORY config launch rviz
         DESTINATION share/${PROJECT_NAME})
 
