@@ -2,9 +2,17 @@
 
 ROS 2 software stack for the **SO-101** 5-DOF arm: see an object on a table, pick it up, and place it.
 
-> **Status:** M1 (simulation) in progress. Latest release: `v0.0-skeleton`.
+> **Status:** M1 complete. Latest release: `v0.1-sim`. Next: M2 (C++ driver on the real arm).
 
 ![SO-101 model in RViz](docs/images/so101_rviz_view.png)
+
+| Component | Status |
+|---|---|
+| Package skeletons, CI, Docker | ✅ `v0.0-skeleton` |
+| Robot description (URDF/xacro, `hw:=mock\|gz\|real`) | ✅ `v0.1-sim` · real-arm zero/direction check pending |
+| Mock backend (`ros2_control`) + launch test in CI | ✅ `v0.1-sim` |
+| Gazebo backend | ⏳ deferred |
+| Real hardware driver | ⏳ M2 |
 
 ## Goals
 
