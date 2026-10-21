@@ -1,0 +1,7 @@
+<library path="so101_hardware">
+  <class name="so101_hardware/SO101System"
+         type="so101_hardware::SO101System"
+         base_class_type="hardware_interface::SystemInterface">
+    <description>ros2_control SystemInterface for the SO-101 arm on a Feetech STS3215 bus.</description>
+  </class>
+</library>
