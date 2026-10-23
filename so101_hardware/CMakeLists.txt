@@ -15,6 +15,7 @@ find_package(hardware_interface REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(pluginlib REQUIRED)
+find_package(joint_limits REQUIRED)
 
 
 add_library(so101_hardware SHARED
@@ -31,6 +32,7 @@ target_link_libraries(so101_hardware PUBLIC
   pluginlib::pluginlib
   rclcpp::rclcpp
   rclcpp_lifecycle::rclcpp_lifecycle
+  joint_limits::joint_limits
 )
 
 pluginlib_export_plugin_description_file(hardware_interface so101_hardware.xml)

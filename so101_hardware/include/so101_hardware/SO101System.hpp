@@ -1,13 +1,14 @@
 #ifndef SO101_HARDWARE__SO101SYSTEM_HPP_
 #define SO101_HARDWARE__SO101SYSTEM_HPP_
 
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <string>
+
 #include "hardware_interface/system_interface.hpp"
 #include "hardware_interface/types/hardware_component_interface_params.hpp"
-#include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/state.hpp"
-#include <string>
-#include <array>
-#include <cstdint>
 
 
 namespace so101_hardware
@@ -33,16 +34,20 @@ private:
   static constexpr std::size_t kNumJoints = 6;
   static constexpr std::size_t kGripperIndex = kNumJoints - 1;
 
-        // Hardware level config
+  // Hardware level config
   std::string serial_port_;
   int baud_rate_{0};
 
-        //Per-joint config, indexed in URDF joint order
+  // Per-joint config, indexed in URDF joint order
   std::array<std::uint8_t, kNumJoints> servo_ids_{};
   std::array<int, kNumJoints> signs_{};
   std::array<std::int32_t, kNumJoints> offsets_{};
 
-        //Interface names, built once here so read()/write() never builds strings
+  std::array<double, kNumJoints> min_positions_{};
+  std::array<double, kNumJoints> max_positions_{};
+  std::array<double, kNumJoints> max_velocities_{};
+
+  //Interface names, built once here so read()/write() never builds strings
   std::array<std::string, kNumJoints> pos_state_names_;
   std::array<std::string, kNumJoints> vel_state_names_;
   std::array<std::string, kNumJoints> pos_cmd_names_;
@@ -51,4 +56,4 @@ private:
 };
 }
 
-#endif
+#endif // SO101_HARDWARE__SO101SYSTEM_HPP_

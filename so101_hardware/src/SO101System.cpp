@@ -1,20 +1,25 @@
 #include "so101_hardware/SO101System.hpp"
-#include "pluginlib/class_list_macros.hpp"
 
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <string>
 #include <unordered_map>
 
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
+#include "joint_limits/joint_limits.hpp"
+#include "pluginlib/class_list_macros.hpp"
 #include "rclcpp/logging.hpp"
 
 namespace
 {
 constexpr long kMaxServoId = 253;
-constexpr long kMaxAbsOffsetCounts = 4096;
+// Offset convention: raw servo counts between the servo's position reading and the joint's
+// URDF zero (mid-range). 4096 counts per revolution; a real offset is under half a turn.
+constexpr long kMaxAbsOffsetCounts = 2048;
 constexpr std::array<long, 8> kAllowedBaudRates = {
   1000000, 500000, 250000, 128000, 115200, 76800, 57600, 38400};
 
@@ -51,7 +56,7 @@ bool find_param(
   out = it->second;
   return true;
 }
-}
+}  // namespace
 
 namespace so101_hardware
 {
@@ -62,14 +67,15 @@ hardware_interface::CallbackReturn SO101System::on_init(
   using hardware_interface::HW_IF_POSITION;
   using hardware_interface::HW_IF_VELOCITY;
 
-            // 1. Base class parses the <ros2_control> block into info_ and builds interface descriptions
-  if (hardware_interface::SystemInterface::on_init(params) != CallbackReturn::SUCCESS) {
-    return CallbackReturn::ERROR;
+  // 1. Base class parses the <ros2_control> block into info_ and builds interface descriptions
+  const auto base_result = hardware_interface::SystemInterface::on_init(params);
+  if (base_result != CallbackReturn::SUCCESS) {
+    return base_result;
   }
 
   std::string value;
 
-            // 2. Hardware level params
+  // 2. Hardware level params
   if (!find_param(info_.hardware_parameters, "serial_port", serial_port_) || serial_port_.empty()) {
     RCLCPP_ERROR(get_logger(), "Missing or empty <hardware> param 'serial_port'");
     return CallbackReturn::ERROR;
@@ -90,22 +96,20 @@ hardware_interface::CallbackReturn SO101System::on_init(
 
   baud_rate_ = static_cast<int>(baud);
 
-            // 3, Joint count
+  // 3. Joint count
   if (info_.joints.size() != kNumJoints) {
-    RCLCPP_ERROR(
-                    get_logger(), "Expected %zu joints, got %zu", kNumJoints, info_.joints.size()
-    );
+    RCLCPP_ERROR(get_logger(), "Expected %zu joints, got %zu", kNumJoints, info_.joints.size());
     return CallbackReturn::ERROR;
   }
 
-            // 4. Per-joint interface contract + params.
+  // 4. Per-joint interface contract + params.
   std::array<bool, kMaxServoId + 1> id_taken{};
   for (std::size_t i = 0; i < kNumJoints; ++i) {
     const auto & joint = info_.joints[i];
     const char * jname = joint.name.c_str();
     const bool is_gripper = (i == kGripperIndex);
 
-                // Command has exactly one, position
+    // Command has exactly one, position
     if (joint.command_interfaces.size() != 1 ||
       joint.command_interfaces[0].name != HW_IF_POSITION)
     {
@@ -114,7 +118,7 @@ hardware_interface::CallbackReturn SO101System::on_init(
       return CallbackReturn::ERROR;
     }
 
-                // States: position, velocity and effort ( only for gripper ), in that order
+    // States: position, velocity and effort (only for gripper), in that order
     const auto & states = joint.state_interfaces;
     const std::size_t expected_states = is_gripper ? 3 : 2;
     const bool states_ok = states.size() == expected_states && states[0].name == HW_IF_POSITION &&
@@ -122,19 +126,19 @@ hardware_interface::CallbackReturn SO101System::on_init(
     if (!states_ok) {
       RCLCPP_ERROR(get_logger(),
           "Joint '%s': expected state interfaces [position, velocity%s] in that order "
-                    "(gripper must be the last_joint)",
-                    jname, is_gripper ? ", effort" : "");
+          "(gripper must be the last joint)", jname, is_gripper ? ", effort" : "");
       return CallbackReturn::ERROR;
     }
 
-                // Servo ID: present, interger , in range, unique.
+    // Servo ID: present, integer , in range, unique.
     long id = 0;
-    if(!find_param(joint.parameters, "ID", value) || !parse_long(value,
-        id) || id < 0 || id > kMaxServoId)
-    {
+    if (!find_param(joint.parameters, "ID", value) || !parse_long(value, id)) {
+      RCLCPP_ERROR(get_logger(), "Joint '%s': missing or non-integer 'ID'", jname);
+      return CallbackReturn::ERROR;
+    }
+    if (id < 0 || id > kMaxServoId) {
       RCLCPP_ERROR(
-                        get_logger(), "Joint '%s': missing or invalid 'ID' (must be 0..%ld)", jname,
-          kMaxServoId);
+        get_logger(), "Joint '%s': ID %ld out of range 0..%ld", jname, id, kMaxServoId);
       return CallbackReturn::ERROR;
     }
     if (id_taken[static_cast<std::size_t>(id)]) {
@@ -143,28 +147,57 @@ hardware_interface::CallbackReturn SO101System::on_init(
     }
     id_taken[static_cast<std::size_t>(id)] = true;
 
-                // Sign: exactly +1 or -1
+    // Sign: exactly +1 or -1
     long sign = 0;
-    if (!find_param(joint.parameters, "sign", value) || !parse_long(value,
-        sign) || (sign != 1 && sign != -1))
-    {
-      RCLCPP_ERROR(get_logger(), "Joint '%s': missing or invalid 'sign' (must be +1 or -1)", jname);
+    if (!find_param(joint.parameters, "sign", value) || !parse_long(value, sign)) {
+      RCLCPP_ERROR(get_logger(), "Joint '%s': missing or non-integer 'sign'", jname);
+      return CallbackReturn::ERROR;
+    }
+    if (sign != 1 && sign != -1) {
+      RCLCPP_ERROR(get_logger(), "Joint '%s': sign %ld must be +1 or -1", jname, sign);
       return CallbackReturn::ERROR;
     }
 
-                //Offset: present, integer, same magnitude (counts).
+    // Offset: present, integer, same magnitude inside limits (counts).
     long offset = 0;
-    if (!find_param(joint.parameters, "offset", value) || !parse_long(value,
-        offset) || std::labs(offset) > kMaxAbsOffsetCounts)
-    {
-      RCLCPP_ERROR(get_logger(), "Joint '%s': missing or invalid 'offset' (|offset| <= %ld counts)",
-          jname, kMaxAbsOffsetCounts);
+    if (!find_param(joint.parameters, "offset", value) || !parse_long(value, offset)) {
+      RCLCPP_ERROR(get_logger(), "Joint '%s': missing or non-integer 'offset'", jname);
+      return CallbackReturn::ERROR;
+    }
+    if (std::labs(offset) > kMaxAbsOffsetCounts) {
+      RCLCPP_ERROR(
+        get_logger(), "Joint '%s': offset %ld exceeds +/-%ld counts", jname, offset,
+        kMaxAbsOffsetCounts);
+      return CallbackReturn::ERROR;
+    }
+
+    // Limits: required, because joint-limit enforcement is off on this install and
+    // clamping in write() is the only protection.
+    const auto lim_it = info_.limits.find(joint.name);
+    if (lim_it == info_.limits.end()) {
+      RCLCPP_ERROR(get_logger(), "Joint '%s': no <limit> parsed from the URDF", jname);
+      return CallbackReturn::ERROR;
+    }
+    const joint_limits::JointLimits & lim = lim_it->second;
+    if (!lim.has_position_limits || !(lim.min_position < lim.max_position)) {
+      RCLCPP_ERROR(
+        get_logger(), "Joint '%s': invalid position limits [%f, %f] rad", jname,
+        lim.min_position, lim.max_position);
+      return CallbackReturn::ERROR;
+    }
+    if (!lim.has_velocity_limits || !(lim.max_velocity > 0.0)) {
+      RCLCPP_ERROR(
+        get_logger(), "Joint '%s': missing or non-positive velocity limit (%f rad/s)", jname,
+        lim.max_velocity);
       return CallbackReturn::ERROR;
     }
 
     servo_ids_[i] = static_cast<std::uint8_t>(id);
     signs_[i] = static_cast<int>(sign);
     offsets_[i] = static_cast<std::int32_t>(offset);
+    min_positions_[i] = lim.min_position;
+    max_positions_[i] = lim.max_position;
+    max_velocities_[i] = lim.max_velocity;
 
     pos_state_names_[i] = joint.name + "/" + HW_IF_POSITION;
     vel_state_names_[i] = joint.name + "/" + HW_IF_VELOCITY;
@@ -230,6 +263,6 @@ hardware_interface::return_type SO101System::write(
 {
   return hardware_interface::return_type::OK;
 }
-}
+}  // namespace so101_hardware
 
 PLUGINLIB_EXPORT_CLASS(so101_hardware::SO101System, hardware_interface::SystemInterface)
