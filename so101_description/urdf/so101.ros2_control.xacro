@@ -3,14 +3,23 @@
      only the hardware plugin changes with `hw`. -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
+  <xacro:macro name="so101_servo_params" params="hw id sign offset">
+    <xacro:if value="${hw == 'real'}">
+      <param name="ID">${id}</param>
+      <param name="sign">${sign}</param>
+      <param name="offset">${offset}</param>
+    </xacro:if>
+  </xacro:macro>
+
   <!-- Arm joint: position command; position + velocity state -->
-  <xacro:macro name="so101_arm_joint" params="name">
+  <xacro:macro name="so101_arm_joint" params="name hw id sign offset">
     <joint name="${name}">
       <command_interface name="position"/>
       <state_interface name="position">
         <param name="initial_value">0.0</param>
       </state_interface>
       <state_interface name="velocity"/>
+      <xacro:so101_servo_params hw="${hw}" id="${id}" sign="${sign}" offset="${offset}"/>
     </joint>
   </xacro:macro>
 
@@ -31,14 +40,16 @@
                controller manager fails loudly at load time instead of
                silently running something else. -->
           <plugin>so101_hardware/SO101System</plugin>
+          <param name="serial_port">/dev/ttyACM1</param>
+          <param name="baud_rate">1000000</param>
         </xacro:if>
       </hardware>
 
-      <xacro:so101_arm_joint name="shoulder_pan"/>
-      <xacro:so101_arm_joint name="shoulder_lift"/>
-      <xacro:so101_arm_joint name="elbow_flex"/>
-      <xacro:so101_arm_joint name="wrist_flex"/>
-      <xacro:so101_arm_joint name="wrist_roll"/>
+      <xacro:so101_arm_joint name="shoulder_pan"  hw="${hw}" id="1" sign="+1" offset="0"/>
+      <xacro:so101_arm_joint name="shoulder_lift" hw="${hw}" id="2" sign="+1" offset="0"/>
+      <xacro:so101_arm_joint name="elbow_flex"    hw="${hw}" id="3" sign="+1" offset="0"/>
+      <xacro:so101_arm_joint name="wrist_flex"    hw="${hw}" id="4" sign="+1" offset="0"/>
+      <xacro:so101_arm_joint name="wrist_roll"    hw="${hw}" id="5" sign="+1" offset="0"/>
 
       <!-- Gripper: position command; position + velocity + effort state.
            Effort is a load proxy, not calibrated torque (see README). -->
@@ -49,6 +60,7 @@
         </state_interface>
         <state_interface name="velocity"/>
         <state_interface name="effort"/>
+        <xacro:so101_servo_params hw="${hw}" id="6" sign="+1" offset="0"/>
       </joint>
 
     </ros2_control>
