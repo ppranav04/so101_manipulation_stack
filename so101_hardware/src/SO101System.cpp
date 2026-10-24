@@ -215,8 +215,6 @@ hardware_interface::CallbackReturn SO101System::on_init(
 hardware_interface::CallbackReturn SO101System::on_configure(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
-
-
   return CallbackReturn::SUCCESS;
 }
 

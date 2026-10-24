@@ -21,12 +21,23 @@ find_package(joint_limits REQUIRED)
 add_library(so101_hardware SHARED
             src/SO101System.cpp)
 
+add_library(sts_protocol STATIC
+            src/sts_protocol.cpp)
+
 target_compile_features(so101_hardware PUBLIC cxx_std_17)
+target_compile_features(sts_protocol PUBLIC cxx_std_17)
+
+set_target_properties(sts_protocol PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 target_include_directories(so101_hardware PUBLIC
 $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
-
 )
+target_include_directories(sts_protocol PUBLIC
+$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+$<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
+
+
 target_link_libraries(so101_hardware PUBLIC
   hardware_interface::hardware_interface
   pluginlib::pluginlib
@@ -34,6 +45,7 @@ target_link_libraries(so101_hardware PUBLIC
   rclcpp_lifecycle::rclcpp_lifecycle
   joint_limits::joint_limits
 )
+target_link_libraries(so101_hardware PRIVATE sts_protocol)
 
 pluginlib_export_plugin_description_file(hardware_interface so101_hardware.xml)
 
@@ -52,8 +64,9 @@ install(
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
-
   find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_sts_protocol test/test_sts_protocol.cpp)
+  target_link_libraries(test_sts_protocol sts_protocol)
   ament_add_gtest(${PROJECT_NAME}_test test/test.cpp)
   # the following line skips the linter which checks for copyrights
   # comment the line when a copyright and license is added to all source files
@@ -66,6 +79,6 @@ if(BUILD_TESTING)
 endif()
 
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
-ament_export_dependencies(hardware_interface pluginlib rclcpp rclcpp_lifecycle)
+ament_export_dependencies(hardware_interface joint_limits pluginlib rclcpp rclcpp_lifecycle)
 
 ament_package()
