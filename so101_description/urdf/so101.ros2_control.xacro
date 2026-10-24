@@ -40,7 +40,7 @@
                controller manager fails loudly at load time instead of
                silently running something else. -->
           <plugin>so101_hardware/SO101System</plugin>
-          <param name="serial_port">/dev/ttyACM1</param>
+          <param name="serial_port">/dev/serial/by-id/usb-1a86_USB_Single_Serial_5AE6081270-if00</param>
           <param name="baud_rate">1000000</param>
         </xacro:if>
       </hardware>

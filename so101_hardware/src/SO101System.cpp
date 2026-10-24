@@ -20,8 +20,8 @@ constexpr long kMaxServoId = 253;
 // Offset convention: raw servo counts between the servo's position reading and the joint's
 // URDF zero (mid-range). 4096 counts per revolution; a real offset is under half a turn.
 constexpr long kMaxAbsOffsetCounts = 2048;
-constexpr std::array<long, 8> kAllowedBaudRates = {
-  1000000, 500000, 250000, 128000, 115200, 76800, 57600, 38400};
+constexpr std::array<long, 5> kAllowedBaudRates = {
+  1000000, 500000, 115200, 57600, 38400};
 
 
 // Strict integer parse: the whole string must be a number. Optional single leading '+'.
