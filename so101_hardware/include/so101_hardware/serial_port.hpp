@@ -15,10 +15,10 @@ public:
   SerialPort(const SerialPort &) = delete;
   SerialPort & operator=(const SerialPort &) = delete;
 
-        // Opens and configures port and returns false and last_error() on failure
+  // Opens and configures port and returns false and last_error() on failure
   [[nodiscard]] bool open(const std::string & path, int baud);
 
-        // Closes the port if open. Safe to call more than once.
+  // Closes the port if open. Safe to call more than once.
   void close();
 
   bool is_open() const;
@@ -26,7 +26,7 @@ public:
   const std::string & last_error() const;
 
 private:
-        // Records "<step> failed on '<path>': <errno text>", closes the port, returns false
+  // Records "<step> failed on '<path>': <errno text>", closes the port, returns false
   bool fail(const std::string & step, const std::string & path);
 
   int fd_{-1};
