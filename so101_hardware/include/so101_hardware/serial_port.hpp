@@ -2,7 +2,6 @@
 #define SO101_HARDWARE__SERIAL_PORT_HPP_
 
 #include <string>
-#include <cerrno>
 
 namespace so101_hardware
 {

@@ -40,7 +40,7 @@ TEST(SerialPort, UnsupportedBaudFailsWithRateInMessage) {
     EXPECT_NE(port.last_error().find("250000"), std::string::npos) << port.last_error();
 }
 
-TEST(SerialPort, NonTtvIsRejected) {
+TEST(SerialPort, NonTtyIsRejected) {
     // /dev/null opens fine but it not a terminal, so TIOCEXCL / termios must fail.
     SerialPort port;
     EXPECT_FALSE(port.open("/dev/null", 1000000));

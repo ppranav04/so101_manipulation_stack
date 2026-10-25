@@ -37,7 +37,7 @@ std::size_t encode_instruction(
   for (std::size_t i = 0; i < param_count; ++i) {
     out[5 + i] = params[i];
   }
-            // Checksum covers ID, LEN, INST and parallel: bytes [2, total -1)
+  // Checksum covers ID, LEN, INST and parallel: bytes [2, total -1)
   out[total - 1] = checksum(out + 2, total - 3);
   return total;
 }
