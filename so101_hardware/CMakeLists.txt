@@ -27,21 +27,28 @@ add_library(sts_protocol STATIC
 add_library(serial_port STATIC
             src/serial_port.cpp)
 
+add_library(sts_bus STATIC
+            src/sts_bus.cpp)
+
 target_compile_features(so101_hardware PUBLIC cxx_std_17)
 target_compile_features(sts_protocol PUBLIC cxx_std_17)
 target_compile_features(serial_port PUBLIC cxx_std_17)
+target_compile_features(sts_bus PUBLIC cxx_std_17)
 
 set_target_properties(sts_protocol PROPERTIES POSITION_INDEPENDENT_CODE ON)
 set_target_properties(serial_port PROPERTIES POSITION_INDEPENDENT_CODE ON)
+set_target_properties(sts_bus PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_include_directories(so101_hardware PUBLIC
 $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-$<INSTALL_INTERFACE:include/${PROJECT_NAME}>
-)
+$<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
 target_include_directories(sts_protocol PUBLIC
 $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
 target_include_directories(serial_port PUBLIC
+$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+$<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
+target_include_directories(sts_bus PUBLIC
 $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
 
@@ -53,8 +60,10 @@ target_link_libraries(so101_hardware PUBLIC
   rclcpp_lifecycle::rclcpp_lifecycle
   joint_limits::joint_limits
 )
-target_link_libraries(so101_hardware PRIVATE sts_protocol)
-target_link_libraries(so101_hardware PRIVATE serial_port)
+
+target_link_libraries(sts_bus PRIVATE serial_port sts_protocol)
+target_link_libraries(so101_hardware PRIVATE sts_bus sts_protocol)
+target_link_options(so101_hardware PRIVATE -Wl,--no-undefined)
 
 pluginlib_export_plugin_description_file(hardware_interface so101_hardware.xml)
 
@@ -82,6 +91,9 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_serial_port test/test_serial_port.cpp)
   target_link_libraries(test_serial_port serial_port)
+
+  ament_add_gtest(test_sts_bus test/test_sts_bus.cpp)
+  target_link_libraries(test_sts_bus sts_bus)
   # the following line skips the linter which checks for copyrights
   # comment the line when a copyright and license is added to all source files
   set(ament_cmake_copyright_FOUND TRUE)

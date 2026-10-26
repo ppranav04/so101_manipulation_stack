@@ -70,7 +70,7 @@ constexpr std::uint8_t high_byte(std::uint16_t value)
   return static_cast<std::uint8_t>(value >> 8);
 }
 
-        // Sign-magnitude decode
+// Sign-magnitude decode
 constexpr std::int32_t decode_sign_magnitude(std::uint16_t raw, unsigned sign_bit)
 {
   const unsigned mask = 1u << sign_bit;
