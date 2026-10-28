@@ -15,7 +15,7 @@ INST_READ = 0x02
 INST_WRITE = 0x03
 URDF_MIN_COUNTS, URDF_MAX_COUNTS = 259, 3900  # wrist_roll URDF limits at centre 2048
 
-LOG_PATH = "wrist_roll_travel.csv"
+LOG_PATH = "wrist_roll_travel_run3.csv"
 
 
 

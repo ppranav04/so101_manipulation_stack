@@ -3,7 +3,7 @@ import csv
 import matplotlib.pyplot as plt
 
 t, raw, unw = [], [], []
-with open("wrist_roll_travel.csv") as f:
+with open("wrist_roll_travel_run1.csv") as f:
     for row in csv.DictReader(f):
         t.append(float(row["t_s"]))
         raw.append(int(row["raw"]))
