@@ -342,7 +342,7 @@
     <parent link="gripper_link"/>
     <child link="moving_jaw_so101_v1_link"/>
     <axis xyz="0 0 1"/>
-    <limit effort="10" velocity="10" lower="-0.174533" upper="1.74533"/>
+    <limit effort="10" velocity="10" lower="-2.96" upper="-0.32"/>
   </joint>
 
   <!-- Joint from wrist to gripper -->
@@ -370,7 +370,7 @@
     <parent link="upper_arm_link"/>
     <child link="lower_arm_link"/>
     <axis xyz="0 0 1"/>
-    <limit effort="10" velocity="10" lower="-1.69" upper="1.69"/>
+    <limit effort="10" velocity="10" lower="-1.69" upper="1.57"/>
   </joint>
 
   <!-- Joint from shoulder to upper_arm -->
