@@ -3,23 +3,24 @@
      only the hardware plugin changes with `hw`. -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <xacro:macro name="so101_servo_params" params="hw id sign offset">
+  <xacro:macro name="so101_servo_params" params="hw id sign offset homing">
     <xacro:if value="${hw == 'real'}">
       <param name="ID">${id}</param>
       <param name="sign">${sign}</param>
       <param name="offset">${offset}</param>
+      <param name="eeprom_homing_offset">${homing}</param>
     </xacro:if>
   </xacro:macro>
 
   <!-- Arm joint: position command; position + velocity state -->
-  <xacro:macro name="so101_arm_joint" params="name hw id sign offset">
+  <xacro:macro name="so101_arm_joint" params="name hw id sign offset homing">
     <joint name="${name}">
       <command_interface name="position"/>
       <state_interface name="position">
         <param name="initial_value">0.0</param>
       </state_interface>
       <state_interface name="velocity"/>
-      <xacro:so101_servo_params hw="${hw}" id="${id}" sign="${sign}" offset="${offset}"/>
+      <xacro:so101_servo_params hw="${hw}" id="${id}" sign="${sign}" offset="${offset}" homing="${homing}"/>
     </joint>
   </xacro:macro>
 
@@ -36,20 +37,22 @@
           <plugin>gz_ros2_control/GazeboSimSystem</plugin>
         </xacro:if>
         <xacro:if value="${hw == 'real'}">
-          <!-- Implemented in M2. Until then this plugin does not exist, so the
-               controller manager fails loudly at load time instead of
-               silently running something else. -->
+          <!-- Real arm: STS3215 bus driver (so101_hardware). Configure is read-only on
+               the bus and fails if any servo's EEPROM disagrees with the params below. -->
           <plugin>so101_hardware/SO101System</plugin>
           <param name="serial_port">/dev/serial/by-id/usb-1a86_USB_Single_Serial_5AE6081270-if00</param>
           <param name="baud_rate">1000000</param>
         </xacro:if>
       </hardware>
 
-      <xacro:so101_arm_joint name="shoulder_pan"  hw="${hw}" id="1" sign="+1" offset="0"/>
-      <xacro:so101_arm_joint name="shoulder_lift" hw="${hw}" id="2" sign="+1" offset="0"/>
-      <xacro:so101_arm_joint name="elbow_flex"    hw="${hw}" id="3" sign="+1" offset="0"/>
-      <xacro:so101_arm_joint name="wrist_flex"    hw="${hw}" id="4" sign="+1" offset="0"/>
-      <xacro:so101_arm_joint name="wrist_roll"    hw="${hw}" id="5" sign="+1" offset="0"/>
+      <!-- eeprom_homing_offset: expected EEPROM Homing_Offset (counts), from LeRobot
+           follower calibration <file name>, <date>. Update after any LeRobot recalibration. -->
+
+      <xacro:so101_arm_joint name="shoulder_pan"  hw="${hw}" id="1" sign="+1" offset="0" homing="-2006"/>
+      <xacro:so101_arm_joint name="shoulder_lift" hw="${hw}" id="2" sign="+1" offset="0" homing="-1061"/>
+      <xacro:so101_arm_joint name="elbow_flex"    hw="${hw}" id="3" sign="+1" offset="0" homing="-1895"/>
+      <xacro:so101_arm_joint name="wrist_flex"    hw="${hw}" id="4" sign="+1" offset="0" homing="-1967"/>
+      <xacro:so101_arm_joint name="wrist_roll"    hw="${hw}" id="5" sign="+1" offset="0" homing="-2013"/>
 
       <!-- Gripper: position command; position + velocity + effort state.
            Effort is a load proxy, not calibrated torque (see README). -->
@@ -60,7 +63,7 @@
         </state_interface>
         <state_interface name="velocity"/>
         <state_interface name="effort"/>
-        <xacro:so101_servo_params hw="${hw}" id="6" sign="+1" offset="0"/>
+        <xacro:so101_servo_params hw="${hw}" id="6" sign="+1" offset="0" homing="1922"/>
       </joint>
 
     </ros2_control>
