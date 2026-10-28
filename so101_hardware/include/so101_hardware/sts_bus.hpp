@@ -26,7 +26,7 @@ struct TransactResult
   sts::ParseStatus parse_status{sts::ParseStatus::kOk};
   sts::StatusPacket packet;
   int error_number{0};
-  std::int64_t elapsed_us;
+  std::int64_t elapsed_us{0};
 };
 
 class StsBus{
@@ -46,6 +46,10 @@ public:
   );
 
   TransactResult ping(std::uint8_t count, std::chrono::microseconds timeout);
+
+  TransactResult read_registers(
+    std::uint8_t id, std::uint8_t address, std::uint8_t length,
+    std::uint8_t * out, std::size_t out_size, std::chrono::microseconds timeout);
 
 private:
   BusStatus write_all(std::size_t count, int & error_number);

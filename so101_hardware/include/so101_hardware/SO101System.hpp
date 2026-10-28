@@ -5,10 +5,14 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <chrono>
 
 #include "hardware_interface/system_interface.hpp"
 #include "hardware_interface/types/hardware_component_interface_params.hpp"
 #include "rclcpp_lifecycle/state.hpp"
+
+#include "so101_hardware/sts_bus.hpp"
+#include "so101_hardware/sts_registers.hpp"
 
 
 namespace so101_hardware
@@ -52,6 +56,16 @@ private:
   std::array<std::string, kNumJoints> vel_state_names_;
   std::array<std::string, kNumJoints> pos_cmd_names_;
   std::string gripper_effort_name_;
+
+
+  bool ping_all();
+  bool read_and_validate_eeprom();
+  void log_eeprom_table();
+  std::int32_t rad_to_counts(std::size_t joint, double rad) const;
+
+  StsBus bus_;
+  std::array<std::int32_t, kNumJoints> expected_homing_offsets_{};
+  std::array<sts::ServoConfig, kNumJoints> servo_configs_{};
 
 };
 }

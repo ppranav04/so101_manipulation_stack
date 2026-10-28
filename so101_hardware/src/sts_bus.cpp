@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 
 namespace so101_hardware
 {
@@ -21,7 +22,7 @@ std::int64_t micros_since(Clock::time_point start)
 {
   return std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - start).count();
 }
-}     // namespace
+}  // namespace
 
 bool StsBus::open(const std::string & path, int baud)
 {
@@ -176,4 +177,24 @@ BusStatus StsBus::read_exact(
   }
   return BusStatus::ok;
 }
+
+TransactResult StsBus::read_registers(
+  std::uint8_t id, std::uint8_t address, std::uint8_t length,
+  std::uint8_t * out, std::size_t out_size, std::chrono::microseconds timeout)
+{
+  if (out == nullptr || length == 0 || out_size < length) {
+    TransactResult result;
+    result.error_number = EINVAL;
+    return result;
+  }
+
+  const std::uint8_t params[2] = {address, length};
+  TransactResult result = transact(id, sts::kInstRead, params, 2, length, timeout);
+  if (result.status == BusStatus::ok) {
+    std::memcpy(out, rx_.data() + result.packet.params_offset, length);
+  }
+  return result;
+}
+
+
 } // namespace so101_hardware
