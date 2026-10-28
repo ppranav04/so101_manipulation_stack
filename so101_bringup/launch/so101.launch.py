@@ -2,8 +2,9 @@
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.conditions import IfCondition
-from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
+from launch.conditions import IfCondition, UnlessCondition
+from launch.substitutions import (
+    Command, EqualsSubstitution, LaunchConfiguration, PathJoinSubstitution)
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
@@ -32,6 +33,9 @@ def generate_launch_description():
     controllers_file = PathJoinSubstitution(
         [FindPackageShare('so101_bringup'), 'config', 'controllers.yaml']
     )
+    real_overrides_file = PathJoinSubstitution(
+        [FindPackageShare('so101_bringup'), 'config', 'real_hw_overrides.yaml']
+    )
     rviz_file = PathJoinSubstitution(
         [FindPackageShare('so101_bringup'), 'rviz', 'bringup.rviz']
     )
@@ -50,13 +54,23 @@ def generate_launch_description():
         output='both',
     )
 
-    control_node = Node(
-        package='controller_manager',
-        executable='ros2_control_node',
-        parameters=[controllers_file],
-        remappings=[('~/robot_description', '/robot_description')],
-        output='both',
-    )
+    is_real = EqualsSubstitution(hw, 'real')
+
+    def make_control_node(param_files, condition):
+        return Node(
+            package='controller_manager',
+            executable='ros2_control_node',
+            parameters=param_files,
+            remappings=[('~/robot_description', '/robot_description')],
+            output='both',
+            condition=condition,
+        )
+
+    # Exactly one of these starts. hw:=real layers the overrides on top of the
+    # shared controllers.yaml, so mock and gz load the shared file alone.
+    control_node_sim = make_control_node([controllers_file], UnlessCondition(is_real))
+    control_node_real = make_control_node(
+        [controllers_file, real_overrides_file], IfCondition(is_real))
 
     joint_state_broadcaster_spawner = Node(
         package='controller_manager',
@@ -88,10 +102,10 @@ def generate_launch_description():
         hw_arg,
         rviz_arg,
         robot_state_publisher,
-        control_node,
+        control_node_sim,
+        control_node_real,
         joint_state_broadcaster_spawner,
         arm_controller_spawner,
         gripper_controller_spawner,
         rviz,
-
     ])

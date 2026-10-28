@@ -1,0 +1,6 @@
+# Loaded only for hw:=real. Start the real arm unconfigured so configure/activate
+# are explicit, operator-triggered steps instead of happening automatically at launch.
+controller_manager:
+  ros__parameters:
+    hardware_components_initial_state:
+      unconfigured: ["SO101System"]
