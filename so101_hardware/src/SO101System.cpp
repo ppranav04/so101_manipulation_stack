@@ -334,6 +334,7 @@ hardware_interface::return_type SO101System::write(
 {
   return hardware_interface::return_type::OK;
 }
+
 std::int32_t SO101System::rad_to_counts(std::size_t joint, double rad) const
 {
   return kMidCounts + offsets_[joint] +

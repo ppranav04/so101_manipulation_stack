@@ -19,7 +19,6 @@ bool to_speed(int baud, speed_t & out)
     case 1000000:
       out = B1000000;
       return true;
-
     case 500000:
       out = B500000;
       return true;
@@ -54,6 +53,7 @@ bool SerialPort::open(const std::string & path, int baud)
     return false;
   }
 
+  // O_RDWR: open for reading and writing
   // O_NOCTTY: never become this process's controlling terminal
   // O_CLOEXEC: don't leak the fd into child processes.
   fd_ = ::open(path.c_str(), O_RDWR | O_NOCTTY | O_CLOEXEC);
