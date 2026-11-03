@@ -21,7 +21,7 @@ def generate_launch_description():
     rviz_arg = DeclareLaunchArgument(
         'rviz',
         default_value='true',
-        description='CI testing rviz diabled'
+        description='In CI testing rviz is disabled by giving false argument'
     )
 
     hw = LaunchConfiguration('hw')
