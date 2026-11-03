@@ -11,14 +11,15 @@ find_package(ament_cmake REQUIRED)
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
 
-find_package(launch_testing_ament_cmake REQUIRED)
-add_launch_test(test/test_mock_bringup.py TIMEOUT 120)
+
 
 install(DIRECTORY config launch rviz
         DESTINATION share/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
+  find_package(launch_testing_ament_cmake REQUIRED)
+  add_launch_test(test/test_mock_bringup.py TIMEOUT 120)
   # the following line skips the linter which checks for copyrights
   # comment the line when a copyright and license is added to all source files
   set(ament_cmake_copyright_FOUND TRUE)
