@@ -14,10 +14,10 @@ namespace so101_hardware
 {
 enum class BusStatus
 {
-  ok,       // the reply arrived and was valud
-  timeout,       // the servo didn't answer in time
+  ok,             // the reply arrived and was valid
+  timeout,        // the servo didn't answer in time
   io_error,       // Linux itself failed for example the USB cable was pulled
-  parse_error       // bytes arrived but were wrong such as a bad checksum or the wrong ID
+  parse_error     // bytes arrived but were wrong such as a bad checksum or the wrong ID
 };
 
 struct TransactResult
@@ -45,7 +45,7 @@ public:
     std::size_t expected_param_count, std::chrono::microseconds timeout
   );
 
-  TransactResult ping(std::uint8_t count, std::chrono::microseconds timeout);
+  TransactResult ping(std::uint8_t id, std::chrono::microseconds timeout);
 
   TransactResult read_registers(
     std::uint8_t id, std::uint8_t address, std::uint8_t length,
@@ -57,7 +57,7 @@ private:
     std::size_t count, std::chrono::steady_clock::time_point deadline,
     int & error_number);
 
-        // Buffer sizing. Packet = fFF FF ID LEN ... CHK
+  // Buffer sizing. Packet = FF FF ID LEN ... CHK
 
   static constexpr std::size_t kNumServos = 6;
   static constexpr std::size_t kMaxDataPerServo = 6;

@@ -76,4 +76,4 @@ std::string check_servo_config(const ServoConfig & actual, const ServoExpectatio
   return problems;
 }
 }     // namespace sts
-} // namesapce so101_hardware
+} // namespace so101_hardware

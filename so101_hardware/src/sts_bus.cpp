@@ -73,8 +73,8 @@ TransactResult StsBus::transact(
     return done(BusStatus::io_error);
   }
 
-    // Drop stale input e.g. a late reply to an earlier transaction that timed out.
-    // Wihtout thism that late reply would be parsed as the answer to this request
+  // Drop stale input e.g. a late reply to an earlier transaction that timed out.
+  // Without this that late reply would be parsed as the answer to this request
   if(::tcflush(port_.fd(), TCIFLUSH) != 0) {
     result.error_number = errno;
     return done(BusStatus::io_error);
@@ -89,7 +89,7 @@ TransactResult StsBus::transact(
     return done (status);
   }
 
-    // Integrity first (checksum, header, length), then ID: parse status owns that order
+  // Integrity first (checksum, header, length), then ID: parse status owns that order
   result.packet = sts::parse_status(rx_.data(), reply_len, id);
   result.parse_status = result.packet.status;
   if (result.parse_status != sts::ParseStatus::kOk) {

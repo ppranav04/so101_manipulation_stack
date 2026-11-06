@@ -22,12 +22,13 @@ constexpr std::uint8_t kTorqueEnable = 40;
 constexpr unsigned kHomingOffsetSignBit = 11;
 constexpr std::uint8_t kModePosition = 0;
 
-            // One READ covers every field above: addresses [kConfigBlockStart, kTorqueEnable].
+// One READ covers every field above: addresses [kConfigBlockStart, kTorqueEnable].
 constexpr std::uint8_t kConfigBlockStart = kId;
 constexpr std::uint8_t kConfigBlockLength = static_cast<std::uint8_t>(kTorqueEnable -
-  kConfigBlockStart + 1);                                                                                                 // 36
-}         // namespace reg
-          // What the servo's EEPROM says
+  kConfigBlockStart + 1); // 36
+} // namespace reg
+
+// What the servo's EEPROM says
 struct ServoConfig
 {
   std::uint8_t id{0};
@@ -39,7 +40,7 @@ struct ServoConfig
   bool torque_enabled{false};
 };
 
-        // What the URDF says it must be
+// What the URDF says it must be
 struct ServoExpectation
 {
   std::uint8_t id{0};
@@ -48,10 +49,10 @@ struct ServoExpectation
   std::int32_t max_counts{0};
 };
 
-        // block holds the bytes of addresses [kConfigBlockStart, kConfigBlockStart + size)
+// block holds the bytes of addresses [kConfigBlockStart, kConfigBlockStart + size)
 bool decode_config_block(const std::uint8_t *block, std::size_t size, ServoConfig & out);
 
-        // Returns every mismatch joined by "; ", or an empty string if the servo is acceptable
+// Returns every mismatch joined by "; ", or an empty string if the servo is acceptable
 std::string check_servo_config(const ServoConfig & actual, const ServoExpectation & expected);
 }     // namespace sts
 } // namespace so101_hardware

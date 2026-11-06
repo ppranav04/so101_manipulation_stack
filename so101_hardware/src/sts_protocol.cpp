@@ -37,7 +37,7 @@ std::size_t encode_instruction(
   for (std::size_t i = 0; i < param_count; ++i) {
     out[5 + i] = params[i];
   }
-  // Checksum covers ID, LEN, INST and parallel: bytes [2, total -1)
+  // Checksum covers ID, LEN, INST and params: bytes [2, total -1)
   out[total - 1] = checksum(out + 2, total - 3);
   return total;
 }
@@ -64,7 +64,7 @@ StatusPacket parse_status(const std::uint8_t * data, std::size_t size, std::uint
     result.status = ParseStatus::kTruncated;
     return result;
   }
-            // Check integrity before trusting any field
+  // Check integrity before trusting any field
   if (checksum(data + 2, total - 3) != data[total - 1]) {
     result.status = ParseStatus::kBadChecksum;
     return result;
@@ -79,7 +79,6 @@ StatusPacket parse_status(const std::uint8_t * data, std::size_t size, std::uint
   result.params_offset = 5;
   result.param_count = length - 2;
   return result;
-
 }
-} // namespace
+} // namespace sts
 } // namespace so101_hardware
