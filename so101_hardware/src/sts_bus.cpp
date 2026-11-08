@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <algorithm>
 
 namespace so101_hardware
 {
@@ -66,27 +67,14 @@ TransactResult StsBus::transact(
     return done(BusStatus::io_error);
   }
 
-  const std::size_t tx_len = sts::encode_instruction(id, instruction, params, param_count,
-      tx_.data(), tx_.size());
-  if (tx_len == 0) {
-    result.error_number = EINVAL;
-    return done(BusStatus::io_error);
-  }
-
-  // Drop stale input e.g. a late reply to an earlier transaction that timed out.
-  // Without this that late reply would be parsed as the answer to this request
-  if(::tcflush(port_.fd(), TCIFLUSH) != 0) {
-    result.error_number = errno;
-    return done(BusStatus::io_error);
-  }
-
-  BusStatus status = write_all(tx_len, result.error_number);
+  BusStatus status = send(id, instruction, params, param_count, result.error_number);
   if (status != BusStatus::ok) {
-    return done (status);
+    return done(status);
   }
+
   status = read_exact(reply_len, deadline, result.error_number);
   if (status != BusStatus::ok) {
-    return done (status);
+    return done(status);
   }
 
   // Integrity first (checksum, header, length), then ID: parse status owns that order
@@ -106,6 +94,27 @@ TransactResult StsBus::transact(
 TransactResult StsBus::ping(std::uint8_t id, std::chrono::microseconds timeout)
 {
   return transact(id, sts::kInstPing, nullptr, 0, 0, timeout);
+}
+
+BusStatus StsBus::send(
+  std::uint8_t id, std::uint8_t instruction,
+  const std::uint8_t * params, std::size_t param_count, int & error_number)
+{
+  const std::size_t tx_len = sts::encode_instruction(id, instruction, params, param_count,
+      tx_.data(), tx_.size());
+  if (tx_len == 0) {
+    error_number = EINVAL;
+    return BusStatus::io_error;
+  }
+
+  // Drop stale input e.g. a late reply to an earlier transaction that timed out.
+  // Without this that late reply would be parsed as the answer to this request
+  if (::tcflush(port_.fd(), TCIFLUSH) != 0) {
+    error_number = errno;
+    return BusStatus::io_error;
+  }
+
+  return write_all(tx_len, error_number);
 }
 
 BusStatus StsBus::write_all(std::size_t count, int & error_number)
@@ -188,12 +197,77 @@ TransactResult StsBus::read_registers(
     return result;
   }
 
+
   const std::uint8_t params[2] = {address, length};
   TransactResult result = transact(id, sts::kInstRead, params, 2, length, timeout);
   if (result.status == BusStatus::ok) {
     std::memcpy(out, rx_.data() + result.packet.params_offset, length);
   }
   return result;
+}
+
+SyncReadResult StsBus::sync_read(
+  const std::uint8_t * ids, std::size_t id_count, std::uint8_t address, std::uint8_t length,
+  std::uint8_t * out, std::size_t out_size, std::chrono::microseconds timeout)
+{
+  const auto start = Clock::now();
+  const auto deadline = start + timeout;
+  SyncReadResult result;
+
+  auto done = [&](BusStatus status){
+      result.status = status;
+      result.elapsed_us = micros_since(start);
+      return result;
+    };
+
+  if(!port_.is_open()) {
+    result.error_number = EBADF;
+    return done(BusStatus::io_error);
+  }
+  if (ids == nullptr || id_count == 0 || id_count > kMaxSyncServos ||
+    length == 0 || length > kMaxDataPerServo ||
+    out == nullptr || out_size < id_count * length)
+  {
+    result.error_number = EINVAL;
+    return done(BusStatus::io_error);
+  }
+
+    // Params: start address, data length, then the IDs in the order the servos reply.
+  std::array<std::uint8_t, 2 + kMaxSyncServos> params{};
+  params[0] = address;
+  params[1] = length;
+  std::copy(ids, ids + id_count, params.begin() + 2);
+
+  BusStatus status = send(sts::kBroadcastId, sts::kInstSyncRead, params.data(), 2 + id_count,
+        result.error_number);
+  if (status != BusStatus::ok) {
+    return done(status);
+  }
+
+
+    // Each servo answers with its own status packet, list order: FF FF ID LEN ERR data CHK
+  const std::size_t reply_len = kStatusOverhead + length;
+  for (std::size_t k = 0; k < id_count; ++k) {
+    result.failed_index = k;
+    status = read_exact(reply_len, deadline, result.error_number);
+    if (status != BusStatus::ok) {
+      return done(status);
+    }
+    const sts::StatusPacket packet = sts::parse_status(rx_.data(), reply_len, ids[k]);
+    result.parse_status = packet.status;
+    if (packet.status != sts::ParseStatus::kOk) {
+      return done(BusStatus::parse_error);
+    }
+    if (packet.param_count != length) {
+      result.parse_status = sts::ParseStatus::kBadLength;
+      return done(BusStatus::parse_error);
+    }
+
+    result.servo_errors[k] = packet.servo_error;
+    std::memcpy(out + k * length, rx_.data() + packet.params_offset, length);
+  }
+
+  return done(BusStatus::ok);
 }
 
 

@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "so101_hardware/sts_bus.hpp"
+#include "so101_hardware/sts_protocol.hpp"
 
 using so101_hardware::BusStatus;
 using so101_hardware::StsBus;
@@ -68,6 +69,27 @@ void write_bytes(int fd, const std::uint8_t * data, std::size_t n)
     }
   }
 }
+
+// SYNC READ of 6 bytes from address 56 (0x38) for IDs 1 and 2:
+// FF FF FE LEN=N+4 INST=82 ADDR LEN_DATA IDs... CHK
+const std::vector<std::uint8_t> kSyncReadId1Id2 =
+{0xFF, 0xFF, 0xFE, 0x06, 0x82, 0x38, 0x06, 0x01, 0x02, 0x38};
+
+// One servo's reply: FF FF ID LEN ERR data CHK, checksum over ID..data.
+std::vector<std::uint8_t> status_packet(
+  std::uint8_t id, std::uint8_t error,
+  const std::vector<std::uint8_t> & data)
+{
+  std::vector<std::uint8_t> p = {0xFF, 0xFF, id, static_cast<std::uint8_t>(data.size() + 2),
+    error};
+  p.insert(p.end(), data.begin(), data.end());
+  p.push_back(so101_hardware::sts::checksum(p.data() + 2, p.size() - 2));
+  return p;
+}
+
+const std::vector<std::uint8_t> kData1 = {0x00, 0x08, 0x10, 0x00, 0x20, 0x00};
+const std::vector<std::uint8_t> kData2 = {0x01, 0x0C, 0x00, 0x80, 0x05, 0x04};
+const std::uint8_t kIds[] = {1, 2};
 
 void write_bytes(int fd, const std::vector<std::uint8_t> & bytes)
 {
@@ -185,6 +207,126 @@ TEST_F(StsBusPty, StaleInputIsFlushedBeforeRequest)
 
   const auto r = bus_.ping(1, 50ms);
   EXPECT_EQ(r.status, BusStatus::ok);  // without the flush this would be kWrongId
+}
+
+TEST_F(StsBusPty, SyncReadTwoServosOk)
+{
+  start_servo(
+    kSyncReadId1Id2.size(), [](int fd) {
+      write_bytes(fd, status_packet(1, 0x00, kData1));
+      write_bytes(fd, status_packet(2, 0x00, kData2));
+    });
+
+  std::uint8_t out[12] = {};
+  const auto r = bus_.sync_read(kIds, 2, 0x38, 6, out, sizeof(out), 50ms);
+  servo_.join();
+
+  EXPECT_EQ(request_, kSyncReadId1Id2);
+  ASSERT_EQ(r.status, BusStatus::ok);
+  EXPECT_EQ(std::vector<std::uint8_t>(out, out + 6), kData1);
+  EXPECT_EQ(std::vector<std::uint8_t>(out + 6, out + 12), kData2);
+  EXPECT_EQ(r.servo_errors[0], 0);
+  EXPECT_EQ(r.servo_errors[1], 0);
+}
+
+TEST_F(StsBusPty, SyncReadReportsServoErrorFlags)
+{
+  start_servo(
+    kSyncReadId1Id2.size(), [](int fd) {
+      write_bytes(fd, status_packet(1, 0x00, kData1));
+      write_bytes(fd, status_packet(2, 0x20, kData2));
+    });
+
+  std::uint8_t out[12] = {};
+  const auto r = bus_.sync_read(kIds, 2, 0x38, 6, out, sizeof(out), 50ms);
+
+  EXPECT_EQ(r.status, BusStatus::ok);  // the bus worked; the servo reports a fault
+  EXPECT_EQ(r.servo_errors[0], 0x00);
+  EXPECT_EQ(r.servo_errors[1], 0x20);
+}
+
+TEST_F(StsBusPty, SyncReadSilentSecondServoTimesOut)
+{
+  start_servo(
+    kSyncReadId1Id2.size(), [](int fd) {
+      write_bytes(fd, status_packet(1, 0x00, kData1));
+    });
+
+  std::uint8_t out[12] = {};
+  const auto r = bus_.sync_read(kIds, 2, 0x38, 6, out, sizeof(out), 20ms);
+
+  EXPECT_EQ(r.status, BusStatus::timeout);
+  EXPECT_EQ(r.failed_index, 1u);
+}
+
+TEST_F(StsBusPty, SyncReadOutOfOrderIsParseError)
+{
+  start_servo(
+    kSyncReadId1Id2.size(), [](int fd) {
+      write_bytes(fd, status_packet(2, 0x00, kData2));
+      write_bytes(fd, status_packet(1, 0x00, kData1));
+    });
+
+  std::uint8_t out[12] = {};
+  const auto r = bus_.sync_read(kIds, 2, 0x38, 6, out, sizeof(out), 50ms);
+
+  EXPECT_EQ(r.status, BusStatus::parse_error);
+  EXPECT_EQ(r.parse_status, so101_hardware::sts::ParseStatus::kWrongId);
+  EXPECT_EQ(r.failed_index, 0u);
+}
+
+TEST_F(StsBusPty, SyncReadRejectsTooSmallOutput)
+{
+  std::uint8_t out[11] = {};  // needs 2 * 6 = 12
+  const auto r = bus_.sync_read(kIds, 2, 0x38, 6, out, sizeof(out), 50ms);
+
+  EXPECT_EQ(r.status, BusStatus::io_error);
+  EXPECT_EQ(r.error_number, EINVAL);
+}
+
+// Hardware-in-the-loop: one SYNC READ of position, velocity and load (56..61) from all six
+// servos, timed. Skipped unless SO101_PORT is set. Read-only: no register is written.
+TEST(StsBusHardware, SyncReadAllServosLatency)
+{
+  const char * port = std::getenv("SO101_PORT");
+  if (port == nullptr) {
+    GTEST_SKIP() << "set SO101_PORT to the by-id path to run against the real arm";
+  }
+
+  StsBus bus;
+  ASSERT_TRUE(bus.open(port, 1000000));
+
+  constexpr int kRounds = 2000;
+  const std::uint8_t ids[] = {1, 2, 3, 4, 5, 6};
+  std::uint8_t out[6 * 6] = {};
+  std::vector<std::int64_t> samples;
+  samples.reserve(kRounds);
+  int failures = 0;
+
+  for (int i = 0; i < kRounds; ++i) {
+    const auto r = bus.sync_read(ids, 6, 56, 6, out, sizeof(out), 10ms);
+    if (r.status == BusStatus::ok) {
+      samples.push_back(r.elapsed_us);
+    } else {
+      ++failures;
+      std::printf(
+        "round %d failed: status %d at index %zu, errno %d\n",
+        i, static_cast<int>(r.status), r.failed_index, r.error_number);
+    }
+  }
+
+  ASSERT_FALSE(samples.empty());
+  std::sort(samples.begin(), samples.end());
+  const auto pct = [&](double p) {
+      return samples[static_cast<std::size_t>(p * static_cast<double>(samples.size() - 1))];
+    };
+  std::printf(
+    "sync read latency over %zu ok / %d failed: p50 %lld us, p99 %lld us, max %lld us\n",
+    samples.size(), failures,
+    static_cast<long long>(pct(0.50)), static_cast<long long>(pct(0.99)),
+    static_cast<long long>(samples.back()));
+
+  EXPECT_EQ(failures, 0);
 }
 
 TEST(StsBus, ClosedBusIsIoError)

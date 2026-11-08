@@ -17,6 +17,9 @@ constexpr std::uint8_t kInstSyncWrite = 0x83;
 
 constexpr std::uint8_t kHeader = 0xFF;
 
+// SYNC READ / SYNC WRITE go to every servo; no single servo answers to this ID.
+constexpr std::uint8_t kBroadcastId = 0xFE;
+
 // Bytes in every packet except params
 constexpr std::uint8_t kPacketOverhead = 6;
 

@@ -29,6 +29,19 @@ struct TransactResult
   std::int64_t elapsed_us{0};
 };
 
+// Most servos one SYNC READ can address: size the result and the bus buffers.
+constexpr std::size_t kMaxSyncServos = 6;
+
+struct SyncReadResult
+{
+  BusStatus status{BusStatus::io_error};
+  sts::ParseStatus parse_status{sts::ParseStatus::kOk};
+  std::size_t failed_index{0}; // position in ids[] whose reply failed; valid only if !ok
+  std::array<std::uint8_t, kMaxSyncServos> servo_errors{};
+  int error_number{0};
+  std::int64_t elapsed_us{0};
+};
+
 class StsBus{
 public:
   StsBus() = default;
@@ -51,7 +64,18 @@ public:
     std::uint8_t id, std::uint8_t address, std::uint8_t length,
     std::uint8_t * out, std::size_t out_size, std::chrono::microseconds timeout);
 
+  // Reads the same register block from several servos with one request.
+  // out receives id_count * length bytes, servo k's block at out + k * length.
+  // On any status other than ok, out may be partly written and must not be used.
+  SyncReadResult sync_read(
+    const std::uint8_t * ids, std::size_t id_count, std::uint8_t address, std::uint8_t length,
+    std::uint8_t * out, std::size_t out_size, std::chrono::microseconds timeout);
+
 private:
+  BusStatus send(
+    std::uint8_t id, std::uint8_t instruction,
+    const std::uint8_t * params, std::size_t param_count, int & error_number);
+
   BusStatus write_all(std::size_t count, int & error_number);
   BusStatus read_exact(
     std::size_t count, std::chrono::steady_clock::time_point deadline,
@@ -59,10 +83,9 @@ private:
 
   // Buffer sizing. Packet = FF FF ID LEN ... CHK
 
-  static constexpr std::size_t kNumServos = 6;
   static constexpr std::size_t kMaxDataPerServo = 6;
-  static constexpr std::size_t kTxBufferSize = 7 + kNumServos * (1 + kMaxDataPerServo);
-  static constexpr std::size_t kRxBufferSize = kNumServos * (6 + kMaxDataPerServo);
+  static constexpr std::size_t kTxBufferSize = 8 + kMaxSyncServos * (1 + kMaxDataPerServo);
+  static constexpr std::size_t kRxBufferSize = kMaxSyncServos * (6 + kMaxDataPerServo);
 
   SerialPort port_;
   std::array<std::uint8_t, kTxBufferSize> tx_{};
