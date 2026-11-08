@@ -18,6 +18,7 @@
 #include "pluginlib/class_list_macros.hpp"
 #include "rclcpp/logging.hpp"
 #include "so101_hardware/sts_registers.hpp"
+#include "so101_hardware/joint_conversion.hpp"
 
 namespace so101_hardware
 {
@@ -36,9 +37,6 @@ constexpr std::chrono::microseconds kConfigTimeout{20000};
 
 // Homing_Offset has an 11-bit magnitude; bit 11 is the sign.
 constexpr long kMaxAbsHomingOffset = 2047;
-
-constexpr std::int32_t kMidCounts = 2048;
-constexpr double kCountsPerRad = 4096.0 / (2.0 * 3.14159265358979323846);
 
 bool parse_long(const std::string & text, long & out)
 {
@@ -335,12 +333,6 @@ hardware_interface::return_type SO101System::write(
   return hardware_interface::return_type::OK;
 }
 
-std::int32_t SO101System::rad_to_counts(std::size_t joint, double rad) const
-{
-  return kMidCounts + offsets_[joint] +
-         static_cast<std::int32_t>(std::lround(signs_[joint] * rad * kCountsPerRad));
-}
-
 bool SO101System::ping_all()
 {
   bool all_ok = true;
@@ -390,8 +382,8 @@ bool SO101System::read_and_validate_eeprom()
     servo_configs_[i] = cfg;
 
     // sign = -1 flips which URDF limit maps to the lower count, so take min/max
-    const std::int32_t a = rad_to_counts(i, min_positions_[i]);
-    const std::int32_t b = rad_to_counts(i, max_positions_[i]);
+    const std::int32_t a = conversion::rad_to_counts(signs_[i], offsets_[i], min_positions_[i]);
+    const std::int32_t b = conversion::rad_to_counts(signs_[i], offsets_[i], max_positions_[i]);
     sts::ServoExpectation expected;
     expected.id = servo_ids_[i];
     expected.homing_offset = expected_homing_offsets_[i];

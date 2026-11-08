@@ -61,7 +61,6 @@ private:
   bool ping_all();
   bool read_and_validate_eeprom();
   void log_eeprom_table();
-  std::int32_t rad_to_counts(std::size_t joint, double rad) const;
 
   StsBus bus_;
   std::array<std::int32_t, kNumJoints> expected_homing_offsets_{};

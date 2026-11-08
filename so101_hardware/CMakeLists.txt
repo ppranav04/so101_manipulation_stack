@@ -33,11 +33,15 @@ add_library(sts_bus STATIC
 add_library(sts_registers STATIC
             src/sts_registers.cpp)
 
+add_library(joint_conversion STATIC
+            src/joint_conversion.cpp)
+
 target_compile_features(so101_hardware PUBLIC cxx_std_17)
 target_compile_features(sts_protocol PUBLIC cxx_std_17)
 target_compile_features(serial_port PUBLIC cxx_std_17)
 target_compile_features(sts_bus PUBLIC cxx_std_17)
 target_compile_features(sts_registers PUBLIC cxx_std_17)
+target_compile_features(joint_conversion PUBLIC cxx_std_17)
 
 set_target_properties(sts_protocol PROPERTIES POSITION_INDEPENDENT_CODE ON)
 set_target_properties(serial_port PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -59,6 +63,9 @@ $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
 target_include_directories(sts_registers PUBLIC
 $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
+target_include_directories(joint_conversion PUBLIC
+$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+$<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
 
 
 target_link_libraries(so101_hardware PUBLIC
@@ -71,7 +78,7 @@ target_link_libraries(so101_hardware PUBLIC
 
 target_link_libraries(sts_bus PRIVATE serial_port sts_protocol)
 target_link_libraries(sts_registers PRIVATE sts_protocol)
-target_link_libraries(so101_hardware PRIVATE sts_bus sts_registers sts_protocol)
+target_link_libraries(so101_hardware PRIVATE sts_bus sts_registers sts_protocol joint_conversion)
 target_link_options(so101_hardware PRIVATE -Wl,--no-undefined)
 
 pluginlib_export_plugin_description_file(hardware_interface so101_hardware.xml)
@@ -106,6 +113,10 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_sts_registers test/test_sts_registers.cpp)
   target_link_libraries(test_sts_registers sts_registers)
+
+  ament_add_gtest(test_joint_conversion test/test_joint_conversion.cpp)
+  target_link_libraries(test_joint_conversion joint_conversion)
+
   # the following line skips the linter which checks for copyrights
   # comment the line when a copyright and license is added to all source files
   set(ament_cmake_copyright_FOUND TRUE)
