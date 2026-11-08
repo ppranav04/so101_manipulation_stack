@@ -46,6 +46,23 @@ bool decode_config_block(const std::uint8_t * block, std::size_t size, ServoConf
   return true;
 }
 
+bool decode_present_block(const std::uint8_t * block, std::size_t size, PresentState & out)
+{
+  if (block == nullptr || size < reg::kPresentBlockLength) {
+    return false;
+  }
+
+  const auto u16 = [block](std::uint8_t address) {
+      const std::size_t i = address - reg::kPresentBlockStart;
+      return make_u16(block[i], block[i + 1]);
+    };
+
+  out.position = decode_sign_magnitude(u16(reg::kPresentPosition), reg::kPresentPositionSignBit);
+  out.velocity = decode_sign_magnitude(u16(reg::kPresentVelocity), reg::kPresentVelocitySignBit);
+  out.load_raw = u16(reg::kPresentLoad);
+  return true;
+}
+
 std::string check_servo_config(const ServoConfig & actual, const ServoExpectation & expected)
 {
   std::string problems;

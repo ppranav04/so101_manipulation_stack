@@ -6,6 +6,7 @@
 
 #include "so101_hardware/sts_registers.hpp"
 
+
 namespace sts = so101_hardware::sts;
 namespace reg = so101_hardware::sts::reg;
 
@@ -118,4 +119,33 @@ TEST(CheckServoConfig, ReportsEveryProblemNotJustTheFirst) {
         const std::string p = sts::check_servo_config(decoded(b), matching(2, 99));
         EXPECT_TRUE(contains(p, "operating mode"));
         EXPECT_TRUE(contains(p, "homing offset"));
+}
+
+TEST(DecodePresentBlock, DecodesPositionVelocityAndRawLoad)
+{
+  // position 2048 = 0x0800, velocity 100 = 0x0064, load 0x0405; little-endian
+  const std::uint8_t b[6] = {0x00, 0x08, 0x64, 0x00, 0x05, 0x04};
+  sts::PresentState s;
+  ASSERT_TRUE(sts::decode_present_block(b, sizeof(b), s));
+  EXPECT_EQ(s.position, 2048);
+  EXPECT_EQ(s.velocity, 100);
+  EXPECT_EQ(s.load_raw, 0x0405);
+}
+
+TEST(DecodePresentBlock, NegativeValuesUseSignBit15)
+{
+  // 0x8014 is -20 in sign-magnitude; two's complement would read -32748.
+  const std::uint8_t b[6] = {0x14, 0x80, 0x64, 0x80, 0x00, 0x00};
+  sts::PresentState s;
+  ASSERT_TRUE(sts::decode_present_block(b, sizeof(b), s));
+  EXPECT_EQ(s.position, -20);
+  EXPECT_EQ(s.velocity, -100);
+}
+
+TEST(DecodePresentBlock, RejectsShortBlockAndNull)
+{
+  const std::uint8_t b[6] = {};
+  sts::PresentState s;
+  EXPECT_FALSE(sts::decode_present_block(b, sizeof(b) - 1, s));
+  EXPECT_FALSE(sts::decode_present_block(nullptr, sizeof(b), s));
 }

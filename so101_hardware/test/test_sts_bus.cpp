@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -18,6 +19,7 @@
 
 #include "so101_hardware/sts_bus.hpp"
 #include "so101_hardware/sts_protocol.hpp"
+#include "so101_hardware/sts_registers.hpp"
 
 using so101_hardware::BusStatus;
 using so101_hardware::StsBus;
@@ -380,6 +382,93 @@ TEST(StsBusHardware, PingAllServosLatency)
     samples.size(), failures,
     static_cast<long long>(pct(0.50)), static_cast<long long>(pct(0.99)),
     static_cast<long long>(samples.back()));
+
+  EXPECT_EQ(failures, 0);
+}
+
+// Hardware-in-the-loop, read-only: what unit is Present_Velocity in?
+// Torque must be off. During the 10 s run, move shoulder_pan (ID 1) back and forth by hand,
+// slow and fast, both directions. Fits v_reg = a * v_fd, where v_fd is the central finite
+// difference of Present_Position in counts/s. a = 1 means the register is in counts/s.
+TEST(StsBusHardware, VelocityUnitAgainstFiniteDifference)
+{
+  namespace sts = so101_hardware::sts;
+  namespace reg = so101_hardware::sts::reg;
+  using Clock = std::chrono::steady_clock;
+
+  const char * port = std::getenv("SO101_PORT");
+  if (port == nullptr) {
+    GTEST_SKIP() << "set SO101_PORT to the by-id path to run against the real arm";
+  }
+
+  StsBus bus;
+  ASSERT_TRUE(bus.open(port, 1000000));
+
+  const std::uint8_t ids[] = {1};
+  std::uint8_t torque = 1;
+  const auto tr = bus.read_registers(ids[0], reg::kTorqueEnable, 1, &torque, 1, 10ms);
+  ASSERT_EQ(tr.status, BusStatus::ok);
+  if (torque != 0) {
+    GTEST_SKIP() << "torque is on for ID 1: turn it off before moving the joint by hand";
+  }
+
+  constexpr int kSamples = 1000;  // 10 s at 100 Hz
+  std::vector<double> t_s;
+  std::vector<double> pos;
+  std::vector<double> vel;
+  t_s.reserve(kSamples);
+  pos.reserve(kSamples);
+  vel.reserve(kSamples);
+  int failures = 0;
+
+  std::printf("move shoulder_pan by hand now, for 10 s\n");
+  const auto t0 = Clock::now();
+  auto next = t0;
+  for (int i = 0; i < kSamples; ++i) {
+    next += 10ms;
+    std::uint8_t raw[reg::kPresentBlockLength] = {};
+    const auto r = bus.sync_read(
+      ids, 1, reg::kPresentBlockStart, reg::kPresentBlockLength, raw, sizeof(raw), 10ms);
+    const auto now = Clock::now();
+    sts::PresentState s;
+    if (r.status == BusStatus::ok && sts::decode_present_block(raw, sizeof(raw), s)) {
+      t_s.push_back(std::chrono::duration<double>(now - t0).count());
+      pos.push_back(s.position);
+      vel.push_back(s.velocity);
+    } else {
+      ++failures;
+    }
+    std::this_thread::sleep_until(next);
+  }
+
+  // Least squares through the origin over samples where the joint is clearly moving.
+  constexpr double kMinCountsPerS = 50.0;  // ~4.4 deg/s; below this the difference is noise
+  double sxy = 0.0;
+  double sxx = 0.0;
+  double syy = 0.0;
+  int used = 0;
+  int sign_agree = 0;
+  for (std::size_t k = 1; k + 1 < pos.size(); ++k) {
+    const double v_fd = (pos[k + 1] - pos[k - 1]) / (t_s[k + 1] - t_s[k - 1]);
+    if (std::abs(v_fd) < kMinCountsPerS) {
+      continue;
+    }
+    sxy += vel[k] * v_fd;
+    sxx += v_fd * v_fd;
+    syy += vel[k] * vel[k];
+    ++used;
+    if ((vel[k] > 0.0) == (v_fd > 0.0) && vel[k] != 0.0) {
+      ++sign_agree;
+    }
+  }
+
+  ASSERT_GT(used, 100) << "not enough motion: move the joint during the run";
+  const double a = sxy / sxx;
+  const double r2 = (sxy * sxy) / (sxx * syy);
+  std::printf(
+    "velocity fit over %d moving samples: v_reg = %.3f * v_fd (counts/s), R^2 %.3f, "
+    "sign agreement %d/%d, read failures %d\n",
+    used, a, r2, sign_agree, used, failures);
 
   EXPECT_EQ(failures, 0);
 }

@@ -109,7 +109,7 @@ if(BUILD_TESTING)
   target_link_libraries(test_serial_port serial_port)
 
   ament_add_gtest(test_sts_bus test/test_sts_bus.cpp)
-  target_link_libraries(test_sts_bus sts_bus sts_protocol)
+  target_link_libraries(test_sts_bus sts_bus sts_protocol sts_registers)
 
   ament_add_gtest(test_sts_registers test/test_sts_registers.cpp)
   target_link_libraries(test_sts_registers sts_registers)

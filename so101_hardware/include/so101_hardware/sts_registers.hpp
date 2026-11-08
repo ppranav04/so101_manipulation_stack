@@ -19,13 +19,24 @@ constexpr std::uint8_t kHomingOffset = 31;
 constexpr std::uint8_t kOperatingMode = 33;
 constexpr std::uint8_t kTorqueEnable = 40;
 
+// Live state, read every control cycle (2 bytes each, little-endian).
+constexpr std::uint8_t kPresentPosition = 56;
+constexpr std::uint8_t kPresentVelocity = 58;
+constexpr std::uint8_t kPresentLoad = 60;
+
 constexpr unsigned kHomingOffsetSignBit = 11;
+constexpr unsigned kPresentPositionSignBit = 15;
+constexpr unsigned kPresentVelocitySignBit = 15;
 constexpr std::uint8_t kModePosition = 0;
 
 // One READ covers every field above: addresses [kConfigBlockStart, kTorqueEnable].
 constexpr std::uint8_t kConfigBlockStart = kId;
 constexpr std::uint8_t kConfigBlockLength = static_cast<std::uint8_t>(kTorqueEnable -
   kConfigBlockStart + 1); // 36
+
+// One SYNC READ covers position, velocity and load: addresses [56, 61].
+constexpr std::uint8_t kPresentBlockStart = kPresentPosition;
+constexpr std::uint8_t kPresentBlockLength = 6;
 } // namespace reg
 
 // What the servo's EEPROM says
@@ -48,6 +59,17 @@ struct ServoExpectation
   std::int32_t min_counts{0};
   std::int32_t max_counts{0};
 };
+
+// Live state of one servo, decoded from the block at kPresentBlockStart.
+struct PresentState
+{
+  std::int32_t position{0};   // counts, sign bit 15 applied
+  std::int32_t velocity{0};   // register units (not yet verified), sign bit 15 applied
+  std::uint16_t load_raw{0};  // undecoded: sign bit and unit not yet verified
+};
+
+// block holds the bytes of addresses [kPresentBlockStart, kPresentBlockStart + size)
+bool decode_present_block(const std::uint8_t * block, std::size_t size, PresentState & out);
 
 // block holds the bytes of addresses [kConfigBlockStart, kConfigBlockStart + size)
 bool decode_config_block(const std::uint8_t *block, std::size_t size, ServoConfig & out);
