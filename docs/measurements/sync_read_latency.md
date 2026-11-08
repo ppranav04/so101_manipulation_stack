@@ -15,7 +15,7 @@ reads, 0 failures). This is the bus time SO101System::read() will spend per cont
 - Host: Ubuntu 24.04 laptop, no RT kernel, nothing else on the servo bus.
 - Other USB devices on the same controller (Bus 001, each on its own root port): webcam,
   USB-C EarPods (idle), keyboard/mouse HID, Bluetooth.
-- Torque: <off/on, from read_only_calibration_registers.py>.
+- Torque: off, from read_only_calibration_registers.py>.
 - Elapsed time is measured inside StsBus with steady_clock, from before the request is
   encoded to after the last reply is parsed.
 
@@ -35,9 +35,6 @@ The p50 varies by 2 us across runs and the p99 by 29 us; only the max moves noti
 - Wire time: request 8 + 6 = 14 bytes, replies 6 x (6 + 6) = 72 bytes, 86 bytes at
   10 bits/byte and 1 Mbaud = 860 us. The rest (~290 us at p50) is USB adapter and servo
   turnaround.
-- At a 100 Hz loop (10 ms period), p50 uses ~11% of the cycle; the worst sample over all
-  6000 reads (2824 us, run 1) ~28%.
-- The max varies between runs (1432-2824 us) while p50 and p99 do not, so the tail is
 - At a 100 Hz loop (10 ms period), p50 uses ~11% of the cycle; the worst sample over all
   6000 reads (2824 us, run 1) ~28%.
 - The max varies between runs (1432-2824 us) while p50 and p99 do not, so the tail is
