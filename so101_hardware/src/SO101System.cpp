@@ -12,6 +12,8 @@
 #include <cmath>
 #include <cstring>
 #include <chrono>
+#include <limits>
+#include <stdexcept>
 
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "joint_limits/joint_limits.hpp"
@@ -34,6 +36,10 @@ constexpr std::array<long, 5> kAllowedBaudRates = {
 
 // Not a hot path: generous against the measured worst-case ping (~500 us).
 constexpr std::chrono::microseconds kConfigTimeout{20000};
+
+// Hot path: measured SYNC READ p99 1294 us, max 2824 us (6000 reads). 5 ms is ~1.8x the
+// worst sample and still leaves half of the 10 ms cycle for update() and write().
+constexpr std::chrono::microseconds kReadTimeout{5000};
 
 // Homing_Offset has an 11-bit magnitude; bit 11 is the sign.
 constexpr long kMaxAbsHomingOffset = 2047;
@@ -280,6 +286,22 @@ hardware_interface::CallbackReturn SO101System::on_configure(
     return CallbackReturn::FAILURE;
   }
 
+  // State interfaces were exported after on_init, so their handles exist now.
+  try {
+    for (std::size_t i = 0; i < kNumJoints; ++i) {
+      pos_states_[i] = get_state_interface_handle(pos_state_names_[i]);
+      vel_states_[i] = get_state_interface_handle(vel_state_names_[i]);
+    }
+  } catch (const std::runtime_error & e) {
+    bus_.close();
+    RCLCPP_ERROR(get_logger(), "on_configure: state interface lookup failed: %s", e.what());
+    return CallbackReturn::FAILURE;
+  }
+
+  // Present_Load's sign bit and unit are not verified, so gripper effort is reported as
+  // "not measured" rather than a made-up number.
+  set_state(gripper_effort_name_, std::numeric_limits<double>::quiet_NaN());
+
   RCLCPP_INFO(get_logger(),
       "on_configure: %s open, %zu/%zu servos verified, torque state untouched",
       serial_port_.c_str(), kNumJoints, kNumJoints);
@@ -323,7 +345,49 @@ hardware_interface::return_type SO101System::read(
   const rclcpp::Time & /*time*/,
   const rclcpp::Duration & /*period*/)
 {
-  return hardware_interface::return_type::OK;
+  using hardware_interface::return_type;
+  static_assert(kNumJoints <= kMaxSyncServos, "one SYNC READ must cover every joint");
+
+  const SyncReadResult r = bus_.sync_read(servo_ids_.data(), kNumJoints,
+      sts::reg::kPresentBlockStart, sts::reg::kPresentBlockLength,
+      present_raw_.data(), present_raw_.size(), kReadTimeout);
+
+  if (r.status != BusStatus::ok) {
+    const bool servo_known = r.failed_index < kNumJoints;
+    RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 1000,
+        "read: %s at %s (ID %u), errno %d, parse status %d", to_cstr(r.status),
+        servo_known ? info_.joints[r.failed_index].name.c_str() : "request",
+        servo_known ? static_cast<unsigned>(servo_ids_[r.failed_index]) : 0u,
+        r.error_number, static_cast<int>(r.parse_status));
+    return return_type::ERROR;
+  }
+
+  // Check and decode the whole snapshot before touching any state interface.
+  std::array<double, kNumJoints> pos{};
+  std::array<double, kNumJoints> vel{};
+  for (std::size_t i = 0; i < kNumJoints; ++i) {
+    if (r.servo_errors[i] != 0) {
+      RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 1000,
+          "read: %s (ID %u) reports servo error flags 0x%02X", info_.joints[i].name.c_str(),
+          static_cast<unsigned>(servo_ids_[i]), static_cast<unsigned>(r.servo_errors[i]));
+      return return_type::ERROR;
+    }
+
+    sts::PresentState s;
+    sts::decode_present_block(present_raw_.data() + i * sts::reg::kPresentBlockLength,
+        sts::reg::kPresentBlockLength, s);
+    pos[i] = conversion::counts_to_rad(signs_[i], offsets_[i], s.position);
+    vel[i] = conversion::counts_per_s_to_rad_per_s(signs_[i], s.velocity);
+  }
+
+  // Publish. wait = true takes the interface's lock even if it has to wait. The controller
+  // manager runs read(), update() and write() in one thread, so in normal operation nothing
+  // else holds these locks; Jazzy's mock GenericSystem writes states the same (blocking) way.
+  for (std::size_t i = 0; i < kNumJoints; ++i) {
+    set_state(pos_states_[i], pos[i], true);
+    set_state(vel_states_[i], vel[i], true);
+  }
+  return return_type::OK;
 }
 
 hardware_interface::return_type SO101System::write(

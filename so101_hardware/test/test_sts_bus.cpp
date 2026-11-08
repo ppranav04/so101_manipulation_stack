@@ -284,6 +284,7 @@ TEST_F(StsBusPty, SyncReadRejectsTooSmallOutput)
 
   EXPECT_EQ(r.status, BusStatus::io_error);
   EXPECT_EQ(r.error_number, EINVAL);
+  EXPECT_EQ(r.failed_index, so101_hardware::kNoServo);  // no servo is to blame
 }
 
 // Hardware-in-the-loop: one SYNC READ of position, velocity and load (56..61) from all six

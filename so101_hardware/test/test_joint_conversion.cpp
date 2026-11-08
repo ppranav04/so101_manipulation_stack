@@ -50,3 +50,10 @@ TEST(JointConversion, RadRoundTripWithinHalfCount)
     }
   }
 }
+
+TEST(JointConversion, VelocityAppliesSignNotOffset)
+{
+  EXPECT_NEAR(conv::counts_per_s_to_rad_per_s(1, 1024), conv::kPi / 2.0, kTol);
+  EXPECT_NEAR(conv::counts_per_s_to_rad_per_s(-1, 1024), -conv::kPi / 2.0, kTol);
+  EXPECT_NEAR(conv::counts_per_s_to_rad_per_s(1, 0), 0.0, kTol);
+}

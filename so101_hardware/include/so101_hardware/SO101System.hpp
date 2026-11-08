@@ -63,6 +63,14 @@ private:
   void log_eeprom_table();
 
   StsBus bus_;
+
+  // Cached in on_configure, so read() writes through them without name lookups.
+  std::array<hardware_interface::StateInterface::SharedPtr, kNumJoints> pos_states_;
+  std::array<hardware_interface::StateInterface::SharedPtr, kNumJoints> vel_states_;
+
+  // One SYNC READ fills this: per servo [pos lo, pos hi, vel lo, vel hi, load lo, load hi].
+  std::array<std::uint8_t, kNumJoints * sts::reg::kPresentBlockLength> present_raw_{};
+
   std::array<std::int32_t, kNumJoints> expected_homing_offsets_{};
   std::array<sts::ServoConfig, kNumJoints> servo_configs_{};
 

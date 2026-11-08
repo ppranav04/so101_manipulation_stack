@@ -20,6 +20,10 @@ std::int32_t rad_to_counts(int sign, std::int32_t offset, double rad);
 // counts must already be sign-magnitude decoded (Present_Position, sign bit 15).
 double counts_to_rad(int sign, std::int32_t offset, std::int32_t counts);
 
+// Present_Velocity (counts/s, measured 2026-11-08) -> rad/s.
+// Sign applies, offset does not: a constant position shift has no rate.
+double counts_per_s_to_rad_per_s(int sign, std::int32_t counts_per_s);
+
 } // namespace conversion
 } // namespace so101_hardware
 

@@ -16,5 +16,10 @@ double counts_to_rad(int sign, std::int32_t offset, std::int32_t counts)
   return sign * static_cast<double>(counts - kMidCounts - offset) / kCountsPerRad;
 }
 
+double counts_per_s_to_rad_per_s(int sign, std::int32_t counts_per_s)
+{
+  return sign * static_cast<double>(counts_per_s) / kCountsPerRad;
+}
+
 } // namespace conversion
 } // namespace so101_hardware

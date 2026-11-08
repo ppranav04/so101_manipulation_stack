@@ -31,12 +31,14 @@ struct TransactResult
 
 // Most servos one SYNC READ can address: size the result and the bus buffers.
 constexpr std::size_t kMaxSyncServos = 6;
+// failed_index value when no servo's reply is to blame (bad arguments, flush or write error).
+constexpr std::size_t kNoServo = kMaxSyncServos;
 
 struct SyncReadResult
 {
   BusStatus status{BusStatus::io_error};
   sts::ParseStatus parse_status{sts::ParseStatus::kOk};
-  std::size_t failed_index{0}; // position in ids[] whose reply failed; valid only if !ok
+  std::size_t failed_index{kNoServo}; // position in ids[] whose reply failed; valid only if !ok
   std::array<std::uint8_t, kMaxSyncServos> servo_errors{};
   int error_number{0};
   std::int64_t elapsed_us{0};
