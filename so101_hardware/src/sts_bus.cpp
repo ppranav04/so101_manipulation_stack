@@ -238,7 +238,7 @@ BusStatus StsBus::sync_write(
   }
 
   // Params: ADDR LEN, then for each servo its ID followed by its length data bytes.
-  std::array<std::uint8_t, 2 + kMaxSyncServos * (1 + kMaxDataPerServo)> params{};
+  std::array<std::uint8_t, kSyncWriteMaxParams> params{};
   params[0] = address;
   params[1] = length;
   std::size_t n = 2;

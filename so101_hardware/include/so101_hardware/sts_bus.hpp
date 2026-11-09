@@ -99,6 +99,8 @@ private:
   // Buffer sizing. Packet = FF FF ID LEN ... CHK
 
   static constexpr std::size_t kMaxDataPerServo = 6;
+  // SYNC WRITE parameters: ADDR LEN, then per servo its ID and data bytes.
+  static constexpr std::size_t kSyncWriteMaxParams = 2 + kMaxSyncServos * (1 + kMaxDataPerServo);
   static constexpr std::size_t kTxBufferSize = 8 + kMaxSyncServos * (1 + kMaxDataPerServo);
   static constexpr std::size_t kRxBufferSize = kMaxSyncServos * (6 + kMaxDataPerServo);
 
