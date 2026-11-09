@@ -19,6 +19,12 @@ constexpr std::uint8_t kHomingOffset = 31;
 constexpr std::uint8_t kOperatingMode = 33;
 constexpr std::uint8_t kTorqueEnable = 40;
 
+// RAM control registers written by the driver (2-byte values little-endian).
+constexpr std::uint8_t kGoalPosition = 42;
+constexpr unsigned kGoalPositionSignBit = 15;
+// Lock = 0 allows EEPROM writes. The driver never writes it.
+constexpr std::uint8_t kLock = 55;
+
 // Live state, read every control cycle (2 bytes each, little-endian).
 constexpr std::uint8_t kPresentPosition = 56;
 constexpr std::uint8_t kPresentVelocity = 58;
@@ -38,6 +44,14 @@ constexpr std::uint8_t kConfigBlockLength = static_cast<std::uint8_t>(kTorqueEna
 constexpr std::uint8_t kPresentBlockStart = kPresentPosition;
 constexpr std::uint8_t kPresentBlockLength = 6;
 } // namespace reg
+
+// The driver may write RAM registers only: addresses [Torque_Enable 40, Lock 55).
+// Below 40 is EEPROM, and writing Lock could unlock EEPROM, so both are refused.
+constexpr bool driver_may_write(std::uint8_t address, std::uint8_t length)
+{
+  return length > 0 && address >= reg::kTorqueEnable &&
+         static_cast<unsigned>(address) + length <= reg::kLock;
+}
 
 // What the servo's EEPROM says
 struct ServoConfig

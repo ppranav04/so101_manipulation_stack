@@ -1,7 +1,7 @@
 """Bringup the SO-101 with ros2_control on a selectable backend (mock/gz/real)."""
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import (
     Command, EqualsSubstitution, LaunchConfiguration, PathJoinSubstitution)
@@ -10,12 +10,40 @@ from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
+def make_spawners(context):
+    """Return the controller spawners for the chosen backend."""
+    hw = LaunchConfiguration('hw').perform(context)
+    motion = LaunchConfiguration('motion_controllers').perform(context)
+    if motion == 'auto':
+        motion = 'false' if hw == 'real' else 'true'
+
+    # The real arm starts unconfigured, so it's controllers can be loaded and
+    # configured at launch; the operator activates them after the hardware.
+    extra = ['--inactive'] if hw == 'real' else []
+
+    names = ['joint_state_broadcaster']
+    if motion == 'true':
+        names += ['joint_trajectory_controller', 'parallel_gripper_controller']
+
+    return [
+        Node(package='controller_manager', executable='spawner', arguments=[name] + extra)
+        for name in names
+    ]
+
+
 def generate_launch_description():
     hw_arg = DeclareLaunchArgument(
         'hw',
         default_value='mock',
         choices=['mock', 'gz', 'real'],
         description='ros2_control backend',
+    )
+
+    motion_arg = DeclareLaunchArgument(
+        'motion_controllers',
+        default_value='auto',
+        choices=['auto', 'true', 'false'],
+        description='Spawn the trajectory and gripper controllers (auto: mock/gz yes, real no)',
     )
 
     rviz_arg = DeclareLaunchArgument(
@@ -72,24 +100,6 @@ def generate_launch_description():
     control_node_real = make_control_node(
         [controllers_file, real_overrides_file], IfCondition(is_real))
 
-    joint_state_broadcaster_spawner = Node(
-        package='controller_manager',
-        executable='spawner',
-        arguments=['joint_state_broadcaster'],
-    )
-
-    arm_controller_spawner = Node(
-        package='controller_manager',
-        executable='spawner',
-        arguments=['joint_trajectory_controller'],
-    )
-
-    gripper_controller_spawner = Node(
-        package='controller_manager',
-        executable='spawner',
-        arguments=['parallel_gripper_controller']
-    )
-
     rviz = Node(
         package='rviz2',
         executable='rviz2',
@@ -101,11 +111,10 @@ def generate_launch_description():
     return LaunchDescription([
         hw_arg,
         rviz_arg,
+        motion_arg,
         robot_state_publisher,
         control_node_sim,
         control_node_real,
-        joint_state_broadcaster_spawner,
-        arm_controller_spawner,
-        gripper_controller_spawner,
+        OpaqueFunction(function=make_spawners),
         rviz,
     ])

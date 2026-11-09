@@ -62,7 +62,7 @@
         </state_interface>
         <state_interface name="velocity"/>
         <state_interface name="effort"/>
-        <xacro:so101_servo_params hw="${hw}" id="6" sign="+1" offset="0" homing="1922"/>
+        <xacro:so101_servo_params hw="${hw}" id="6" sign="+1" offset="135" homing="1922"/>
       </joint>
 
     </ros2_control>

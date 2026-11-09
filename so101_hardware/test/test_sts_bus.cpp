@@ -287,6 +287,75 @@ TEST_F(StsBusPty, SyncReadRejectsTooSmallOutput)
   EXPECT_EQ(r.failed_index, so101_hardware::kNoServo);  // no servo is to blame
 }
 
+// WRITE Torque_Enable (40 = 0x28) = 1 to ID 1: FF FF 01 LEN=4 03 28 01 CHK
+const std::vector<std::uint8_t> kWriteTorqueOnId1 =
+{0xFF, 0xFF, 0x01, 0x04, 0x03, 0x28, 0x01, 0xCE};
+
+TEST_F(StsBusPty, WriteRegistersOk)
+{
+  start_servo(kWriteTorqueOnId1.size(), [](int fd) {write_bytes(fd, status_packet(1, 0x00, {}));});
+
+  const std::uint8_t on = 1;
+  const auto r = bus_.write_registers(1, 40, &on, 1, 50ms);
+  servo_.join();
+
+  EXPECT_EQ(request_, kWriteTorqueOnId1);
+  EXPECT_EQ(r.status, BusStatus::ok);
+  EXPECT_EQ(r.packet.servo_error, 0);
+}
+
+TEST_F(StsBusPty, WriteRegistersSilentServoTimesOut)
+{
+  start_servo(kWriteTorqueOnId1.size(), [](int) {});
+
+  const std::uint8_t on = 1;
+  const auto r = bus_.write_registers(1, 40, &on, 1, 20ms);
+  servo_.join();
+
+  EXPECT_EQ(r.status, BusStatus::timeout);
+}
+
+TEST_F(StsBusPty, WriteRegistersRejectsBadArguments)
+{
+  const std::uint8_t data[7] = {};
+  EXPECT_EQ(bus_.write_registers(1, 40, nullptr, 1, 50ms).error_number, EINVAL);
+  EXPECT_EQ(bus_.write_registers(1, 40, data, 0, 50ms).error_number, EINVAL);
+  EXPECT_EQ(bus_.write_registers(1, 40, data, 7, 50ms).error_number, EINVAL);
+  EXPECT_EQ(bus_.write_registers(0xFE, 40, data, 1, 50ms).error_number, EINVAL);
+}
+
+// SYNC WRITE Goal_Position (42 = 0x2A, 2 bytes): ID 1 -> 2048, ID 2 -> 3000.
+// FF FF FE LEN=0A 83 2A 02 | 01 00 08 | 02 B8 0B | CHK
+const std::vector<std::uint8_t> kSyncWriteGoalId1Id2 =
+{0xFF, 0xFF, 0xFE, 0x0A, 0x83, 0x2A, 0x02, 0x01, 0x00, 0x08, 0x02, 0xB8, 0x0B, 0x7A};
+
+TEST_F(StsBusPty, SyncWriteSendsOnePacket)
+{
+  start_servo(kSyncWriteGoalId1Id2.size(), [](int) {});  // servos never reply to SYNC WRITE
+
+  const std::uint8_t goals[4] = {0x00, 0x08, 0xB8, 0x0B};
+  int err = 0;
+  const BusStatus s = bus_.sync_write(kIds, 2, 42, 2, goals, err);
+  servo_.join();
+
+  EXPECT_EQ(s, BusStatus::ok);
+  EXPECT_EQ(request_, kSyncWriteGoalId1Id2);  // exact bytes on the wire
+}
+
+TEST_F(StsBusPty, SyncWriteRejectsBadArguments)
+{
+  const std::uint8_t ids[7] = {1, 2, 3, 4, 5, 6, 7};
+  const std::uint8_t data[42] = {};
+  int err = 0;
+  EXPECT_EQ(bus_.sync_write(nullptr, 2, 42, 2, data, err), BusStatus::io_error);
+  EXPECT_EQ(err, EINVAL);
+  EXPECT_EQ(bus_.sync_write(ids, 2, 42, 2, nullptr, err), BusStatus::io_error);
+  EXPECT_EQ(bus_.sync_write(ids, 0, 42, 2, data, err), BusStatus::io_error);
+  EXPECT_EQ(bus_.sync_write(ids, 7, 42, 2, data, err), BusStatus::io_error);
+  EXPECT_EQ(bus_.sync_write(ids, 2, 42, 0, data, err), BusStatus::io_error);
+  EXPECT_EQ(bus_.sync_write(ids, 2, 42, 7, data, err), BusStatus::io_error);
+}
+
 // Hardware-in-the-loop: one SYNC READ of position, velocity and load (56..61) from all six
 // servos, timed. Skipped unless SO101_PORT is set. Read-only: no register is written.
 TEST(StsBusHardware, SyncReadAllServosLatency)

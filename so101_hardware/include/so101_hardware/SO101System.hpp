@@ -61,12 +61,23 @@ private:
   bool ping_all();
   bool read_and_validate_eeprom();
   void log_eeprom_table();
+  bool write_ram(
+    std::size_t i, std::uint8_t address, const std::uint8_t * data, std::uint8_t length,
+    std::uint8_t & servo_error);
+  bool torque_off_all();
 
   StsBus bus_;
 
   // Cached in on_configure, so read() writes through them without name lookups.
   std::array<hardware_interface::StateInterface::SharedPtr, kNumJoints> pos_states_;
   std::array<hardware_interface::StateInterface::SharedPtr, kNumJoints> vel_states_;
+  std::array<hardware_interface::CommandInterface::SharedPtr, kNumJoints> pos_cmds_;
+  // Raw Present_Position (counts) from the last good read(); on_activate seeds Goal_Position.
+  std::array<std::int32_t, kNumJoints> present_counts_{};
+
+  // write(): the goal sent last cycle (rad), seeded by on_activate, and its wire bytes.
+  std::array<double, kNumJoints> last_goal_{};
+  std::array<std::uint8_t, kNumJoints * 2> goal_raw_{};
 
   // One SYNC READ fills this: per servo [pos lo, pos hi, vel lo, vel hi, load lo, load hi].
   std::array<std::uint8_t, kNumJoints * sts::reg::kPresentBlockLength> present_raw_{};

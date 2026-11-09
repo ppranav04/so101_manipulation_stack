@@ -206,6 +206,50 @@ TransactResult StsBus::read_registers(
   return result;
 }
 
+TransactResult StsBus::write_registers(
+  std::uint8_t id, std::uint8_t address, const std::uint8_t * data, std::uint8_t length,
+  std::chrono::microseconds timeout)
+{
+  if (data == nullptr || length == 0 || length > kMaxDataPerServo || id == sts::kBroadcastId) {
+    TransactResult result;
+    result.error_number = EINVAL;
+    return result;
+  }
+
+  std::array<std::uint8_t, 1 + kMaxDataPerServo> params{};
+  params[0] = address;
+  std::memcpy(params.data() + 1, data, length);
+  return transact(id, sts::kInstWrite, params.data(), 1u + length, 0, timeout);
+}
+
+BusStatus StsBus::sync_write(
+  const std::uint8_t * ids, std::size_t id_count, std::uint8_t address, std::uint8_t length,
+  const std::uint8_t * data, int & error_number)
+{
+  if (!port_.is_open()) {
+    error_number = EBADF;
+    return BusStatus::io_error;
+  }
+  if (ids == nullptr || data == nullptr || id_count == 0 || id_count > kMaxSyncServos ||
+    length == 0 || length > kMaxDataPerServo)
+  {
+    error_number = EINVAL;
+    return BusStatus::io_error;
+  }
+
+  // Params: ADDR LEN, then for each servo its ID followed by its length data bytes.
+  std::array<std::uint8_t, 2 + kMaxSyncServos * (1 + kMaxDataPerServo)> params{};
+  params[0] = address;
+  params[1] = length;
+  std::size_t n = 2;
+  for (std::size_t k = 0; k < id_count; ++k) {
+    params[n++] = ids[k];
+    std::memcpy(params.data() + n, data + k * length, length);
+    n += length;
+  }
+  return send(sts::kBroadcastId, sts::kInstSyncWrite, params.data(), n, error_number);
+}
+
 SyncReadResult StsBus::sync_read(
   const std::uint8_t * ids, std::size_t id_count, std::uint8_t address, std::uint8_t length,
   std::uint8_t * out, std::size_t out_size, std::chrono::microseconds timeout)

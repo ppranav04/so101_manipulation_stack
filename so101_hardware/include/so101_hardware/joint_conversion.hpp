@@ -2,6 +2,7 @@
 #define SO101_HARDWARE__JOINT_CONVERSION_HPP_
 
 #include <cstdint> // for std::int32_t
+#include <cstddef> // for std::size_t
 
 namespace so101_hardware
 {
@@ -23,6 +24,16 @@ double counts_to_rad(int sign, std::int32_t offset, std::int32_t counts);
 // Present_Velocity (counts/s, measured 2026-11-08) -> rad/s.
 // Sign applies, offset does not: a constant position shift has no rate.
 double counts_per_s_to_rad_per_s(int sign, std::int32_t counts_per_s);
+
+// The next goal for one joint: target clamped to [min, max], then moved at most max_step
+// (>= 0) from previous, the goal sent last cycle. A NaN target holds previous.
+double limit_command(double target, double previous, double min, double max, double max_step);
+
+// Checks EVERY joint: outside[i] is true when positions[i] is below mins[i], above
+// maxs[i], or NaN. Returns how many joints are outside. Each array holds count elements.
+std::size_t mark_outside_limits(
+  const double * positions, const double * mins, const double * maxs, std::size_t count,
+  bool * outside);
 
 } // namespace conversion
 } // namespace so101_hardware

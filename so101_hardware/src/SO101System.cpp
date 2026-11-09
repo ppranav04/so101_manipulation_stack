@@ -41,6 +41,10 @@ constexpr std::chrono::microseconds kConfigTimeout{20000};
 // worst sample and still leaves half of the 10 ms cycle for update() and write().
 constexpr std::chrono::microseconds kReadTimeout{5000};
 
+// Longest period write() honours when it sizes a step. A late cycle (say 100 ms) must not let
+// the goal jump 10x further; it moves as if two normal 10 ms cycles had passed.
+constexpr double kMaxWritePeriodS = 0.02;
+
 // Homing_Offset has an 11-bit magnitude; bit 11 is the sign.
 constexpr long kMaxAbsHomingOffset = 2047;
 
@@ -291,10 +295,11 @@ hardware_interface::CallbackReturn SO101System::on_configure(
     for (std::size_t i = 0; i < kNumJoints; ++i) {
       pos_states_[i] = get_state_interface_handle(pos_state_names_[i]);
       vel_states_[i] = get_state_interface_handle(vel_state_names_[i]);
+      pos_cmds_[i] = get_command_interface_handle(pos_cmd_names_[i]);
     }
   } catch (const std::runtime_error & e) {
     bus_.close();
-    RCLCPP_ERROR(get_logger(), "on_configure: state interface lookup failed: %s", e.what());
+    RCLCPP_ERROR(get_logger(), "on_configure: interface lookup failed: %s", e.what());
     return CallbackReturn::FAILURE;
   }
 
@@ -311,12 +316,83 @@ hardware_interface::CallbackReturn SO101System::on_configure(
 hardware_interface::CallbackReturn SO101System::on_activate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
+  // Every failure path ends the same way: torque off on every servo, stay inactive.
+  auto fail = [this](const char * why) {
+      RCLCPP_ERROR(get_logger(), "on_activate: %s; torque off, staying inactive", why);
+      torque_off_all();
+      return CallbackReturn::FAILURE;
+    };
+
+  // 1. A fresh snapshot. read() checks the bus and every servo's error flags.
+  if (read(get_clock()->now(), rclcpp::Duration(0, 0)) != hardware_interface::return_type::OK) {
+    return fail("read failed");
+  }
+
+  // 2. EVERY joint inside its limits. Policy: refuse, never move at torque-on.
+  std::array<double, kNumJoints> pos{};
+  for (std::size_t i = 0; i < kNumJoints; ++i) {
+    pos[i] = conversion::counts_to_rad(signs_[i], offsets_[i], present_counts_[i]);
+  }
+  std::array<bool, kNumJoints> outside{};
+  if (conversion::mark_outside_limits(pos.data(), min_positions_.data(), max_positions_.data(),
+      kNumJoints, outside.data()) > 0)
+  {
+    for (std::size_t i = 0; i < kNumJoints; ++i) {
+      if (outside[i]) {
+        RCLCPP_ERROR(get_logger(), "on_activate: %s at %.4f rad is outside [%.4f, %.4f]",
+            info_.joints[i].name.c_str(), pos[i], min_positions_[i], max_positions_[i]);
+      }
+    }
+    return fail("joint(s) outside limits, move them inside by hand");
+  }
+
+  // 3. Goal_Position = present position, so torque-on holds still instead of jumping to an
+  //    old goal. 4. Commands = the same positions, so the first write() holds still too.
+  for (std::size_t i = 0; i < kNumJoints; ++i) {
+    // Inside the URDF limits means inside the EEPROM range, so 0..4095: no sign bit needed.
+    const auto c = static_cast<std::uint16_t>(present_counts_[i]);
+    const std::uint8_t goal[2] = {sts::low_byte(c), sts::high_byte(c)};
+    std::uint8_t servo_error = 0;
+    if (!write_ram(i, sts::reg::kGoalPosition, goal, 2, servo_error) || servo_error != 0) {
+      return fail("Goal_Position write failed");
+    }
+    set_command(pos_cmds_[i], pos[i], true);
+    last_goal_[i] = pos[i];
+  }
+
+  // 5. Torque on, 6. then read it back from every servo.
+  const std::uint8_t on = 1;
+  for (std::size_t i = 0; i < kNumJoints; ++i) {
+    std::uint8_t servo_error = 0;
+    if (!write_ram(i, sts::reg::kTorqueEnable, &on, 1, servo_error) || servo_error != 0) {
+      return fail("torque-on write failed");
+    }
+  }
+  for (std::size_t i = 0; i < kNumJoints; ++i) {
+    std::uint8_t torque = 0;
+    const TransactResult r = bus_.read_registers(servo_ids_[i], sts::reg::kTorqueEnable, 1,
+        &torque, 1, kConfigTimeout);
+    if (r.status != BusStatus::ok || torque != 1) {
+      RCLCPP_ERROR(get_logger(), "on_activate: %s torque read-back: %s, value %u",
+          info_.joints[i].name.c_str(), to_cstr(r.status), static_cast<unsigned>(torque));
+      return fail("torque read-back failed");
+    }
+  }
+
+  RCLCPP_INFO(get_logger(), "on_activate: all %zu joints inside limits, goals seeded, torque on",
+      kNumJoints);
   return CallbackReturn::SUCCESS;
 }
 
 hardware_interface::CallbackReturn SO101System::on_deactivate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
+  if (!torque_off_all()) {
+    // ERROR sends the component to on_error, which tries again.
+    RCLCPP_ERROR(get_logger(), "on_deactivate: torque off failed on at least one servo");
+    return CallbackReturn::ERROR;
+  }
+  RCLCPP_INFO(get_logger(), "on_deactivate: torque off on all servos");
   return CallbackReturn::SUCCESS;
 }
 
@@ -332,12 +408,25 @@ hardware_interface::CallbackReturn SO101System::on_cleanup(
 hardware_interface::CallbackReturn SO101System::on_shutdown(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
+  if (!bus_.is_open()) {
+    RCLCPP_ERROR(get_logger(), "on_error: bus not open, torque state unknown; check it by hand");
+    return CallbackReturn::SUCCESS;
+  }
   return CallbackReturn::SUCCESS;
 }
 
 hardware_interface::CallbackReturn SO101System::on_error(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
+  // Reached after read()/write() returns ERROR or a transition fails. Make the arm safe first.
+  if (!torque_off_all()) {
+    RCLCPP_ERROR(get_logger(), "on_error: torque off FAILED; switch off the 12 V supply");
+    bus_.close();
+    return CallbackReturn::FAILURE;
+  }
+  bus_.close();
+  RCLCPP_ERROR(get_logger(),
+      "on_error: torque off on all servos, bus closed; reconfigure to retry");
   return CallbackReturn::SUCCESS;
 }
 
@@ -365,6 +454,7 @@ hardware_interface::return_type SO101System::read(
   // Check and decode the whole snapshot before touching any state interface.
   std::array<double, kNumJoints> pos{};
   std::array<double, kNumJoints> vel{};
+  std::array<std::int32_t, kNumJoints> counts{};
   for (std::size_t i = 0; i < kNumJoints; ++i) {
     if (r.servo_errors[i] != 0) {
       RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 1000,
@@ -375,7 +465,8 @@ hardware_interface::return_type SO101System::read(
 
     sts::PresentState s;
     sts::decode_present_block(present_raw_.data() + i * sts::reg::kPresentBlockLength,
-        sts::reg::kPresentBlockLength, s);
+    sts::reg::kPresentBlockLength, s);
+    counts[i] = s.position;
     pos[i] = conversion::counts_to_rad(signs_[i], offsets_[i], s.position);
     vel[i] = conversion::counts_per_s_to_rad_per_s(signs_[i], s.velocity);
   }
@@ -387,14 +478,88 @@ hardware_interface::return_type SO101System::read(
     set_state(pos_states_[i], pos[i], true);
     set_state(vel_states_[i], vel[i], true);
   }
+  present_counts_ = counts;
   return return_type::OK;
 }
 
 hardware_interface::return_type SO101System::write(
   const rclcpp::Time & /*time*/,
-  const rclcpp::Duration & /*period*/)
+  const rclcpp::Duration & period)
 {
-  return hardware_interface::return_type::OK;
+  using hardware_interface::return_type;
+  static_assert(sts::driver_may_write(sts::reg::kGoalPosition, 2),
+    "Goal_Position must be a driver-writable RAM register");
+
+  const double dt = std::clamp(period.seconds(), 0.0, kMaxWritePeriodS);
+
+  for (std::size_t i = 0; i < kNumJoints; ++i) {
+    // Non-blocking read; if the lock is busy, target stays NaN and the joint holds.
+    double target = std::numeric_limits<double>::quiet_NaN();
+    if (!get_command(pos_cmds_[i], target, false)) {
+      target = std::numeric_limits<double>::quiet_NaN();
+    }
+    last_goal_[i] = conversion::limit_command(target, last_goal_[i], min_positions_[i],
+        max_positions_[i], max_velocities_[i] * dt);
+
+    const std::int32_t c = conversion::rad_to_counts(signs_[i], offsets_[i], last_goal_[i]);
+    if (c < 0 || c > 4095) {  // cannot happen while the limits sit inside the EEPROM range
+      RCLCPP_ERROR(get_logger(), "write: %s goal %d counts out of range",
+          info_.joints[i].name.c_str(), c);
+      return return_type::ERROR;
+    }
+    goal_raw_[2 * i] = sts::low_byte(static_cast<std::uint16_t>(c));
+    goal_raw_[2 * i + 1] = sts::high_byte(static_cast<std::uint16_t>(c));
+  }
+
+  int err = 0;
+  const BusStatus s = bus_.sync_write(servo_ids_.data(), kNumJoints, sts::reg::kGoalPosition, 2,
+      goal_raw_.data(), err);
+  if (s != BusStatus::ok) {
+    RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 1000, "write: %s, errno %d", to_cstr(s),
+        err);
+    return return_type::ERROR;
+  }
+  return return_type::OK;
+}
+
+bool SO101System::write_ram(
+  std::size_t i, std::uint8_t address, const std::uint8_t * data, std::uint8_t length,
+  std::uint8_t & servo_error)
+{
+  const char * jname = info_.joints[i].name.c_str();
+  const unsigned id = servo_ids_[i];
+  if (!sts::driver_may_write(address, length)) {
+    RCLCPP_ERROR(get_logger(), "%s (ID %u): refused write of %u bytes at address %u", jname, id,
+        static_cast<unsigned>(length), static_cast<unsigned>(address));
+    return false;
+  }
+  const TransactResult r = bus_.write_registers(servo_ids_[i], address, data, length,
+      kConfigTimeout);
+  servo_error = r.packet.servo_error;
+  if (r.status != BusStatus::ok) {
+    RCLCPP_ERROR(get_logger(), "%s (ID %u): write at address %u: %s, errno %d", jname, id,
+        static_cast<unsigned>(address), to_cstr(r.status), r.error_number);
+    return false;
+  }
+  if (servo_error != 0) {
+    RCLCPP_WARN(get_logger(), "%s (ID %u): write at address %u: servo error flags 0x%02X", jname,
+        id, static_cast<unsigned>(address), static_cast<unsigned>(servo_error));
+  }
+  return true;
+}
+
+bool SO101System::torque_off_all()
+{
+  // Try EVERY servo even after a failure: one dead servo must not leave the others powered.
+  const std::uint8_t off = 0;
+  bool all_ok = true;
+  for (std::size_t i = 0; i < kNumJoints; ++i) {
+    std::uint8_t servo_error = 0;
+    if (!write_ram(i, sts::reg::kTorqueEnable, &off, 1, servo_error)) {
+      all_ok = false;
+    }
+  }
+  return all_ok;
 }
 
 bool SO101System::ping_all()

@@ -66,12 +66,25 @@ public:
     std::uint8_t id, std::uint8_t address, std::uint8_t length,
     std::uint8_t * out, std::size_t out_size, std::chrono::microseconds timeout);
 
+  // Writes length bytes from data to one servo, starting at address, and waits for its
+  // status reply (a WRITE to the broadcast ID gets no reply, so it is rejected).
+  TransactResult write_registers(
+    std::uint8_t id, std::uint8_t address, const std::uint8_t * data, std::uint8_t length,
+    std::chrono::microseconds timeout);
+
   // Reads the same register block from several servos with one request.
   // out receives id_count * length bytes, servo k's block at out + k * length.
   // On any status other than ok, out may be partly written and must not be used.
   SyncReadResult sync_read(
     const std::uint8_t * ids, std::size_t id_count, std::uint8_t address, std::uint8_t length,
     std::uint8_t * out, std::size_t out_size, std::chrono::microseconds timeout);
+
+  // Writes length bytes at address to several servos in one broadcast packet. Servos never
+  // reply to SYNC WRITE, so ok means "sent", not "received". data holds id_count * length
+  // bytes, servo k's block at data + k * length.
+  BusStatus sync_write(
+    const std::uint8_t * ids, std::size_t id_count, std::uint8_t address, std::uint8_t length,
+    const std::uint8_t * data, int & error_number);
 
 private:
   BusStatus send(

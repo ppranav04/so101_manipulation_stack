@@ -149,3 +149,19 @@ TEST(DecodePresentBlock, RejectsShortBlockAndNull)
   EXPECT_FALSE(sts::decode_present_block(b, sizeof(b) - 1, s));
   EXPECT_FALSE(sts::decode_present_block(nullptr, sizeof(b), s));
 }
+
+TEST(DriverMayWrite, AllowsRamControlRegisters)
+{
+  EXPECT_TRUE(sts::driver_may_write(reg::kTorqueEnable, 1));
+  EXPECT_TRUE(sts::driver_may_write(reg::kGoalPosition, 2));
+  EXPECT_TRUE(sts::driver_may_write(54, 1));  // last byte before Lock
+}
+
+TEST(DriverMayWrite, RefusesEepromAndLock)
+{
+  EXPECT_FALSE(sts::driver_may_write(reg::kHomingOffset, 2));
+  EXPECT_FALSE(sts::driver_may_write(39, 2));            // starts in EEPROM, ends in RAM
+  EXPECT_FALSE(sts::driver_may_write(reg::kLock, 1));
+  EXPECT_FALSE(sts::driver_may_write(54, 2));            // runs into Lock
+  EXPECT_FALSE(sts::driver_may_write(reg::kTorqueEnable, 0));
+}
