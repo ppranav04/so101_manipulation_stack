@@ -17,7 +17,7 @@ def make_spawners(context):
     if motion == 'auto':
         motion = 'false' if hw == 'real' else 'true'
 
-    # The real arm starts unconfigured, so it's controllers can be loaded and
+    # The real arm starts unconfigured, so it's controllers can only be loaded and
     # configured at launch; the operator activates them after the hardware.
     extra = ['--inactive'] if hw == 'real' else []
 
