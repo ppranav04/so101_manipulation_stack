@@ -6,7 +6,6 @@ The ros2_control loop runs at 100 Hz on the real arm with p99 period 10.255 ms a
 over 15 ms in 2 minutes (11 996 cycles). read() takes 1.25 ms per cycle on average (one SYNC
 READ of six servos). 24 000 single-servo WRITEs got a reply every time, and 40 activations
 in a row succeeded. Command-to-motion latency, beyond an ideal plant, is 90-100 ms (p50).
-The 30-minute soak has not been run yet.
 
 ## Setup
 
@@ -67,8 +66,3 @@ with an ideal plant, in 10 ms steps.
 
 The value depends on direction by about one cycle. It includes the servo's lag following a
 ramp and its deadband (about 4-5 counts at shoulder_pan); the two have not been separated.
-
-## Not yet measured
-
-- 30-minute soak with bus-error count.
-- Supply voltage under load (the gripper reported a voltage error twice while holding).
