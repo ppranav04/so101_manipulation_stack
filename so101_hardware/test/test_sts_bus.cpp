@@ -542,3 +542,97 @@ TEST(StsBusHardware, VelocityUnitAgainstFiniteDifference)
 
   EXPECT_EQ(failures, 0);
 }
+
+
+// Hardware-in-the-loop: how often does a WRITE go unanswered? Mimics on_activate: one SYNC
+// READ, then Goal_Position written to each servo back to back. Each servo gets its own
+// present position back, so nothing moves, but these writes switch torque on; the test
+// requires torque off at the start and switches it off again at the end. Skipped unless
+// SO101_PORT is set.
+TEST(StsBusHardware, WriteReplyRate)
+{
+  namespace sts = so101_hardware::sts;
+  namespace reg = so101_hardware::sts::reg;
+  static_assert(sts::driver_may_write(reg::kGoalPosition, 2), "Goal_Position must be RAM");
+
+  const char * port = std::getenv("SO101_PORT");
+  if (port == nullptr) {
+    GTEST_SKIP() << "set SO101_PORT to the by-id path to run against the real arm";
+  }
+
+  StsBus bus;
+  ASSERT_TRUE(bus.open(port, 1000000));
+
+  constexpr std::size_t kServos = 6;
+  const std::uint8_t ids[kServos] = {1, 2, 3, 4, 5, 6};
+  for (const std::uint8_t id : ids) {
+    std::uint8_t torque = 1;
+    const auto tr = bus.read_registers(id, reg::kTorqueEnable, 1, &torque, 1, 20ms);
+    ASSERT_EQ(tr.status, BusStatus::ok) << "ID " << static_cast<int>(id);
+    if (torque != 0) {
+      GTEST_SKIP() << "torque is on for ID " << static_cast<int>(id) << ": turn it off first";
+    }
+  }
+  constexpr int kRounds = 500;
+  std::uint8_t block[kServos * reg::kPresentBlockLength] = {};
+  std::vector<std::int64_t> samples;
+  samples.reserve(kRounds * kServos);
+  int read_failures = 0;
+  int timeouts[kServos] = {};
+  int other_failures = 0;
+
+  for (int n = 0; n < kRounds; ++n) {
+    const auto rr = bus.sync_read(ids, kServos, reg::kPresentBlockStart,
+        reg::kPresentBlockLength, block, sizeof(block), 10ms);
+    if (rr.status != BusStatus::ok) {
+      ++read_failures;
+      continue;
+    }
+    for (std::size_t k = 0; k < kServos; ++k) {
+      // Present_Position and Goal_Position share the encoding, so the bytes go back as read.
+      const std::uint8_t * goal = block + k * reg::kPresentBlockLength;
+      const auto r = bus.write_registers(ids[k], reg::kGoalPosition, goal, 2, 20ms);
+      if (r.status == BusStatus::ok) {
+        samples.push_back(r.elapsed_us);
+      } else if (r.status == BusStatus::timeout) {
+        ++timeouts[k];
+        std::printf("round %d: ID %d write timeout\n", n, static_cast<int>(ids[k]));
+      } else {
+        ++other_failures;
+        std::printf("round %d: ID %d write status %d\n", n, static_cast<int>(ids[k]),
+          static_cast<int>(r.status));
+      }
+    }
+    std::this_thread::sleep_for(10ms);
+  }
+
+  // Writing Goal_Position switches the servo's torque on (seen on the arm, 2026-11-11),
+  // so switch it off on every servo and check, before anything can end the test early.
+  const std::uint8_t off = 0;
+  for (const std::uint8_t id : ids) {
+    const auto w = bus.write_registers(id, reg::kTorqueEnable, &off, 1, 20ms);
+    std::uint8_t torque = 1;
+    const auto r = bus.read_registers(id, reg::kTorqueEnable, 1, &torque, 1, 20ms);
+    EXPECT_TRUE(w.status == BusStatus::ok && r.status == BusStatus::ok && torque == 0)
+      << "torque still on or unreadable for ID " << static_cast<int>(id);
+  }
+
+  ASSERT_FALSE(samples.empty());
+  std::sort(samples.begin(), samples.end());
+  const auto pct = [&](double p) {
+      return samples[static_cast<std::size_t>(p * static_cast<double>(samples.size() - 1))];
+    };
+  int total_timeouts = 0;
+  for (std::size_t k = 0; k < kServos; ++k) {
+    std::printf("ID %d: %d timeouts\n", static_cast<int>(ids[k]), timeouts[k]);
+    total_timeouts += timeouts[k];
+  }
+  std::printf(
+    "writes: %zu ok, %d timeouts, %d other failures, %d failed reads; "
+    "reply p50 %lld us, p99 %lld us, max %lld us\n",
+    samples.size(), total_timeouts, other_failures, read_failures,
+    static_cast<long long>(pct(0.50)), static_cast<long long>(pct(0.99)),
+    static_cast<long long>(samples.back()));
+
+  EXPECT_EQ(total_timeouts + other_failures + read_failures, 0);
+}
