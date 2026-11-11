@@ -265,7 +265,7 @@ hardware_interface::CallbackReturn SO101System::on_init(
 hardware_interface::CallbackReturn SO101System::on_configure(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
-  // Configure is READ-ONLY on the bus: ping and READ onlu
+  // Configure is READ-ONLY on the bus: ping and READ only
   bus_.close();
   servo_configs_ = {};
 
@@ -413,19 +413,23 @@ hardware_interface::CallbackReturn SO101System::on_cleanup(
 hardware_interface::CallbackReturn SO101System::on_shutdown(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
-  if (!bus_.is_open()) {
-    RCLCPP_ERROR(get_logger(), "on_error: bus not open, torque state unknown; check it by hand");
-    return CallbackReturn::SUCCESS;
+  if (bus_.is_open() && !torque_off_all()) {
+    RCLCPP_ERROR(get_logger(), "on_shutdown: torque off FAILED; switch off the servo power supply");
   }
+  bus_.close();
   return CallbackReturn::SUCCESS;
 }
 
 hardware_interface::CallbackReturn SO101System::on_error(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
+  if (!bus_.is_open()) {
+    RCLCPP_ERROR(get_logger(), "on_error: bus not open, torque state unknown; check it by hand");
+    return CallbackReturn::SUCCESS;
+  }
   // Reached after read()/write() returns ERROR or a transition fails. Make the arm safe first.
   if (!torque_off_all()) {
-    RCLCPP_ERROR(get_logger(), "on_error: torque off FAILED; switch off the 12 V supply");
+    RCLCPP_ERROR(get_logger(), "on_error: torque off FAILED; switch off the servo power supply");
     bus_.close();
     return CallbackReturn::FAILURE;
   }

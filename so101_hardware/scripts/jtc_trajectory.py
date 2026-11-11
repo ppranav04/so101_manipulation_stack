@@ -116,7 +116,7 @@ def main():
     rclpy.init()
     node = JtcTrajectory()
     try:
-        if not node.client.wait_for_server(timeout_sec=2.0):
+        if not node.client.wait_for_server(timeout_sec=5.0):
             print(f'{ACTION} not available; is joint_trajectory_controller active?')
             return 1
         start = node.fresh('reference', 2.0)

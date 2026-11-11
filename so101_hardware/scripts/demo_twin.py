@@ -36,22 +36,34 @@ LIMITS = [(-1.9190, 1.9036), (-1.9067, 1.8622), (-1.8453, 1.5692), (-1.7717, 1.6
 HOME = [0.0, -1.05, 0.79, 1.08, -1.47]
 HOME_S = 4.0  # time to reach home from wherever the arm is
 
-# Offsets from HOME (rad) visited in order, SEGMENT_S apart, then back to HOME.
-WAVE = [
-    [+0.50, +0.00, -0.20, -0.20, +0.40],
-    [+0.50, +0.15, -0.30, +0.10, -0.40],
-    [+0.00, +0.20, -0.35, +0.20, +0.00],
-    [-0.50, +0.15, -0.30, +0.10, +0.40],
-    [-0.50, +0.00, -0.20, -0.20, -0.40],
-    [+0.00, -0.10, +0.00, -0.25, +0.00],
-]
-SEGMENT_S = 2.0
+# Offsets from HOME (rad), visited in order and then back to HOME, with the time per segment.
+# 'large' was checked along the whole spline: inside the limits, gripper >= 120 mm above the
+# base, peak speed 0.99 rad/s (wrist_roll). It loads shoulder_lift and the elbow more.
+MOTIONS = {
+    'small': (2.0, [
+        [+0.50, +0.00, -0.20, -0.20, +0.40],
+        [+0.50, +0.15, -0.30, +0.10, -0.40],
+        [+0.00, +0.20, -0.35, +0.20, +0.00],
+        [-0.50, +0.15, -0.30, +0.10, +0.40],
+        [-0.50, +0.00, -0.20, -0.20, -0.40],
+        [+0.00, -0.10, +0.00, -0.25, +0.00],
+    ]),
+    'large': (2.5, [
+        [+1.00, +0.00, -0.30, -0.50, +0.90],
+        [+1.00, +0.25, -0.50, +0.30, -0.90],
+        [+0.00, +0.35, -0.70, +0.50, +0.00],
+        [-1.00, +0.25, -0.50, +0.30, +0.90],
+        [-1.00, +0.00, -0.30, -0.50, -0.90],
+        [+0.00, -0.20, +0.00, -0.40, +0.00],
+    ]),
+}
 
 
-def waypoints():
-    """Return [(time, positions)] from home, through WAVE, back to home."""
-    poses = [HOME] + [[h + o for h, o in zip(HOME, off)] for off in WAVE] + [HOME]
-    return [(HOME_S + i * SEGMENT_S, pose) for i, pose in enumerate(poses)]
+def waypoints(motion):
+    """Return [(time, positions)] from home, through the motion's offsets, back to home."""
+    segment_s, offsets = MOTIONS[motion]
+    poses = [HOME] + [[h + o for h, o in zip(HOME, off)] for off in offsets] + [HOME]
+    return [(HOME_S + i * segment_s, pose) for i, pose in enumerate(poses)]
 
 
 def build_goal(points):
@@ -126,6 +138,7 @@ def wait_servers(arms, timeout_s):
             return False
     return True
 
+
 def sync_gripper(real, sim):
     """Send the real gripper's position to the sim gripper controller (no wait for the result)."""
     for _ in range(100):
@@ -141,15 +154,17 @@ def sync_gripper(real, sim):
     sim.gripper_client.send_goal_async(goal)
     print(f'sim gripper -> {real.gripper:.3f} rad (real)')
 
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--real-domain', type=int, default=int(os.environ.get('ROS_DOMAIN_ID', 0)))
     parser.add_argument('--sim-domain', type=int, default=1)
     parser.add_argument('--no-sim', action='store_true', help='real arm only')
     parser.add_argument('--no-real', action='store_true', help='Gazebo only')
+    parser.add_argument('--motion', choices=sorted(MOTIONS), default='small')
     args = parser.parse_args()
 
-    points = waypoints()
+    points = waypoints(args.motion)
     for _, pose in points:
         for (lo, hi), q, name in zip(LIMITS, pose, ARM_JOINTS):
             if not lo <= q <= hi:
@@ -165,7 +180,7 @@ def main():
         if not arms or not wait_servers(arms, 5.0):
             return 1
 
-        # The demo moves the arm joints only, so first give the sim gripper the real one's position.
+        # The demo moves only the arm joints: first copy the real gripper position to the sim.
         real = next((a for a in arms if a.label == 'real'), None)
         sim = next((a for a in arms if a.label == 'sim'), None)
         if real is not None and sim is not None:
