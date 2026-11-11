@@ -2,17 +2,40 @@
 
 ROS 2 software stack for the **SO-101** 5-DOF arm: see an object on a table, pick it up, and place it.
 
-> **Status:** M1 complete. Latest release: `v0.1-sim`. Next: M2 (C++ driver on the real arm).
+> **Status:** M2 complete. Latest release: `v0.2-real-hw`. \
+  **Next:** M3 (MoveIt in sim and on the real arm).
 
-![SO-101 model in RViz](docs/images/so101_rviz_view.png)
+**Demo:** the real arm, Gazebo and RViz running the same trajectory.
+
+https://github.com/user-attachments/assets/3eec670b-1465-4dd4-aecc-fa23d8b8ae2a
+
 
 | Component | Status |
 |---|---|
 | Package skeletons, CI, Docker | ✅ `v0.0-skeleton` |
-| Robot description (URDF/xacro, `hw:=mock\|gz\|real`) | ✅ `v0.1-sim` · real-arm zero/direction check pending |
+| Robot description (URDF/xacro, `hw:=mock\|gz\|real`) | ✅ joint signs verified on the arm, limits from measured travel |
 | Mock backend (`ros2_control`) + launch test in CI | ✅ `v0.1-sim` |
-| Gazebo backend | ⏳ deferred |
-| Real hardware driver | ⏳ M2 |
+| Real hardware driver (C++, STS3215 bus) | ✅ `v0.2-real-hw` |
+| Gazebo Harmonic backend | ✅ `v0.2-real-hw` |
+| MoveIt 2 | ⏳ M3 |
+
+
+## M2 results (real arm)
+
+| Measurement | Result | Details |
+|---|---|---|
+| Control loop | 100 Hz, period p50 10.000 ms, p99 10.255 ms, 0 of 11 996 cycles over 15 ms | [control_loop.md](docs/measurements/control_loop.md) |
+| `read()` per cycle (one SYNC READ, 6 servos) | avg 1.25 ms (1.12-3.11 ms) | [control_loop.md](docs/measurements/control_loop.md) |
+| SYNC READ latency | p50 1147-1149 us, p99 1265-1294 us, 0 failures in 6000 | [sync_read_latency.md](docs/measurements/sync_read_latency.md) |
+| WRITE reliability | 24 000 writes, 0 timeouts; 40/40 activations | [control_loop.md](docs/measurements/control_loop.md) |
+| Command-to-motion latency (beyond an ideal plant) | p50 90-100 ms | [control_loop.md](docs/measurements/control_loop.md) |
+| Trajectory tracking, 5-joint trajectory | max error 0.097 rad (elbow), final error <= 0.02 rad | [first_motion.md](docs/measurements/first_motion.md) |
+| Present_Velocity unit | counts/s, fit 0.996-0.997, R^2 >= 0.996 | [velocity_unit.md](docs/measurements/velocity_unit.md) |
+| Joint signs, travel, limits | all signs +1; limits 35 counts inside the measured stops | [joint_limits.md](docs/measurements/joint_limits.md) |
+| Calibration persistence | EEPROM calibration survives power cycles | [calibration_persistence.md](docs/measurements/calibration_persistence.md) |
+| wrist_roll travel | ~338 deg, encoder wrap inside the travel | [wrist_roll_travel.md](docs/measurements/wrist_roll_travel.md) |
+| Long-run stability (30 min) | not measured | |
+
 
 ## Goals
 
