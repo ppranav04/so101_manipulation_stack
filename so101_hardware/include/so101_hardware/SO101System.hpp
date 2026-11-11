@@ -65,6 +65,7 @@ private:
     std::size_t i, std::uint8_t address, const std::uint8_t * data, std::uint8_t length,
     std::uint8_t & servo_error);
   bool torque_off_all();
+  void log_supply_stats(const char * when);
 
   StsBus bus_;
 
@@ -78,6 +79,10 @@ private:
   // write(): the goal sent last cycle (rad), seeded by on_activate, and its wire bytes.
   std::array<double, kNumJoints> last_goal_{};
   std::array<std::uint8_t, kNumJoints * 2> goal_raw_{};
+
+  // Supply watch since the last on_activate: lowest Present_Voltage (0.1 V), hottest servo (C).
+  std::array<std::uint8_t, kNumJoints> min_voltage_dv_{};
+  std::array<std::uint8_t, kNumJoints> max_temperature_c_{};
 
   // One SYNC READ fills this: per servo [pos lo, pos hi, vel lo, vel hi, load lo, load hi].
   std::array<std::uint8_t, kNumJoints * sts::reg::kPresentBlockLength> present_raw_{};

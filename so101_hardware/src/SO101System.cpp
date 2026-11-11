@@ -323,6 +323,10 @@ hardware_interface::CallbackReturn SO101System::on_activate(
       return CallbackReturn::FAILURE;
     };
 
+  // Start a fresh supply watch: any real reading is below 255 and above 0.
+  min_voltage_dv_.fill(255);
+  max_temperature_c_.fill(0);
+
   // 1. A fresh snapshot. read() checks the bus and every servo's error flags.
   if (read(get_clock()->now(), rclcpp::Duration(0, 0)) != hardware_interface::return_type::OK) {
     return fail("read failed");
@@ -393,6 +397,7 @@ hardware_interface::CallbackReturn SO101System::on_deactivate(
     return CallbackReturn::ERROR;
   }
   RCLCPP_INFO(get_logger(), "on_deactivate: torque off on all servos");
+  log_supply_stats("on_deactivate");
   return CallbackReturn::SUCCESS;
 }
 
@@ -425,6 +430,7 @@ hardware_interface::CallbackReturn SO101System::on_error(
     return CallbackReturn::FAILURE;
   }
   bus_.close();
+  log_supply_stats("on_error");
   RCLCPP_ERROR(get_logger(),
       "on_error: torque off on all servos, bus closed; reconfigure to retry");
   return CallbackReturn::SUCCESS;
@@ -455,18 +461,25 @@ hardware_interface::return_type SO101System::read(
   std::array<double, kNumJoints> pos{};
   std::array<double, kNumJoints> vel{};
   std::array<std::int32_t, kNumJoints> counts{};
+  std::array<std::uint8_t, kNumJoints> volts{};
+  std::array<std::uint8_t, kNumJoints> temps{};
   for (std::size_t i = 0; i < kNumJoints; ++i) {
-    if (r.servo_errors[i] != 0) {
-      RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 1000,
-          "read: %s (ID %u) reports servo error flags 0x%02X", info_.joints[i].name.c_str(),
-          static_cast<unsigned>(servo_ids_[i]), static_cast<unsigned>(r.servo_errors[i]));
-      return return_type::ERROR;
-    }
-
     sts::PresentState s;
     sts::decode_present_block(present_raw_.data() + i * sts::reg::kPresentBlockLength,
     sts::reg::kPresentBlockLength, s);
+
+    if (r.servo_errors[i] != 0) {
+      RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 1000,
+          "read: %s (ID %u) reports servo error flags 0x%02X at %.1f V, %u C",
+          info_.joints[i].name.c_str(), static_cast<unsigned>(servo_ids_[i]),
+          static_cast<unsigned>(r.servo_errors[i]), s.voltage_dv / 10.0,
+          static_cast<unsigned>(s.temperature_c));
+      return return_type::ERROR;
+    }
+
     counts[i] = s.position;
+    volts[i] = s.voltage_dv;
+    temps[i] = s.temperature_c;
     pos[i] = conversion::counts_to_rad(signs_[i], offsets_[i], s.position);
     vel[i] = conversion::counts_per_s_to_rad_per_s(signs_[i], s.velocity);
   }
@@ -479,6 +492,10 @@ hardware_interface::return_type SO101System::read(
     set_state(vel_states_[i], vel[i], true);
   }
   present_counts_ = counts;
+  for (std::size_t i = 0; i < kNumJoints; ++i) {
+    min_voltage_dv_[i] = std::min(min_voltage_dv_[i], volts[i]);
+    max_temperature_c_[i] = std::max(max_temperature_c_[i], temps[i]);
+  }
   return return_type::OK;
 }
 
@@ -546,6 +563,15 @@ bool SO101System::write_ram(
         id, static_cast<unsigned>(address), static_cast<unsigned>(servo_error));
   }
   return true;
+}
+
+void SO101System::log_supply_stats(const char * when)
+{
+  for (std::size_t i = 0; i < kNumJoints; ++i) {
+    RCLCPP_INFO(get_logger(), "%s: %-14s since activate: min %.1f V, max %u C", when,
+        info_.joints[i].name.c_str(), min_voltage_dv_[i] / 10.0,
+        static_cast<unsigned>(max_temperature_c_[i]));
+  }
 }
 
 bool SO101System::torque_off_all()

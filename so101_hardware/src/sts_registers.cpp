@@ -60,6 +60,8 @@ bool decode_present_block(const std::uint8_t * block, std::size_t size, PresentS
   out.position = decode_sign_magnitude(u16(reg::kPresentPosition), reg::kPresentPositionSignBit);
   out.velocity = decode_sign_magnitude(u16(reg::kPresentVelocity), reg::kPresentVelocitySignBit);
   out.load_raw = u16(reg::kPresentLoad);
+  out.voltage_dv = block[reg::kPresentVoltage - reg::kPresentBlockStart];
+  out.temperature_c = block[reg::kPresentTemperature - reg::kPresentBlockStart];
   return true;
 }
 

@@ -317,10 +317,10 @@ TEST_F(StsBusPty, WriteRegistersSilentServoTimesOut)
 
 TEST_F(StsBusPty, WriteRegistersRejectsBadArguments)
 {
-  const std::uint8_t data[7] = {};
+  const std::uint8_t data[9] = {};
   EXPECT_EQ(bus_.write_registers(1, 40, nullptr, 1, 50ms).error_number, EINVAL);
   EXPECT_EQ(bus_.write_registers(1, 40, data, 0, 50ms).error_number, EINVAL);
-  EXPECT_EQ(bus_.write_registers(1, 40, data, 7, 50ms).error_number, EINVAL);
+  EXPECT_EQ(bus_.write_registers(1, 40, data, 9, 50ms).error_number, EINVAL);  // 8-byte limit + 1
   EXPECT_EQ(bus_.write_registers(0xFE, 40, data, 1, 50ms).error_number, EINVAL);
 }
 
@@ -353,7 +353,7 @@ TEST_F(StsBusPty, SyncWriteRejectsBadArguments)
   EXPECT_EQ(bus_.sync_write(ids, 0, 42, 2, data, err), BusStatus::io_error);
   EXPECT_EQ(bus_.sync_write(ids, 7, 42, 2, data, err), BusStatus::io_error);
   EXPECT_EQ(bus_.sync_write(ids, 2, 42, 0, data, err), BusStatus::io_error);
-  EXPECT_EQ(bus_.sync_write(ids, 2, 42, 7, data, err), BusStatus::io_error);
+  EXPECT_EQ(bus_.sync_write(ids, 2, 42, 9, data, err), BusStatus::io_error);  // 8-byte limit + 1
 }
 
 // Hardware-in-the-loop: one SYNC READ of position, velocity and load (56..61) from all six
