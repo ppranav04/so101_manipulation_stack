@@ -46,7 +46,7 @@ joint_trajectory_controller:
         goal: 0.05
       wrist_roll:
         trajectory: 0.2
-        goal: 0.02
+        goal: 0.04
 
 parallel_gripper_controller:
   ros__parameters:

@@ -51,9 +51,10 @@ def generate_launch_description():
         description='Spawn the trajectory and gripper controllers (auto: mock/gz yes, real no)',
     )
 
+    gz_world = PathJoinSubstitution([FindPackageShare('so101_bringup'), 'worlds', 'so101.sdf'])
     gz_args_arg = DeclareLaunchArgument(
         'gz_args',
-        default_value='-r empty.sdf',
+        default_value=['-r ', gz_world],
         description='Arguments for gz sim (hw:=gz only); add -s for a headless server',
     )
 
