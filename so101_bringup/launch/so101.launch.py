@@ -1,8 +1,13 @@
 """Bringup the SO-101 with ros2_control on a selectable backend (mock/gz/real)."""
 
+import os
+
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, OpaqueFunction
-from launch.conditions import IfCondition, UnlessCondition
+from launch.actions import (
+    AppendEnvironmentVariable, DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction)
+from launch.conditions import IfCondition
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import (
     Command, EqualsSubstitution, LaunchConfiguration, PathJoinSubstitution)
 from launch_ros.actions import Node
@@ -46,6 +51,12 @@ def generate_launch_description():
         description='Spawn the trajectory and gripper controllers (auto: mock/gz yes, real no)',
     )
 
+    gz_args_arg = DeclareLaunchArgument(
+        'gz_args',
+        default_value='-r empty.sdf',
+        description='Arguments for gz sim (hw:=gz only); add -s for a headless server',
+    )
+
     rviz_arg = DeclareLaunchArgument(
         'rviz',
         default_value='true',
@@ -70,19 +81,22 @@ def generate_launch_description():
 
     robot_description = {
         'robot_description': ParameterValue(
-            Command(['xacro ', xacro_file, ' hw:=', hw]),
+            Command(['xacro ', xacro_file, ' hw:=', hw, ' gz_controllers:=', controllers_file]),
             value_type=str,
         )
     }
 
+    is_real = EqualsSubstitution(hw, 'real')
+    is_gz = EqualsSubstitution(hw, 'gz')
+    # In Gazebo, time comes from the simulator (/clock), so every node must use it.
+    sim_time = {'use_sim_time': ParameterValue(is_gz, value_type=bool)}
+
     robot_state_publisher = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
-        parameters=[robot_description],
+        parameters=[robot_description, sim_time],
         output='both',
     )
-
-    is_real = EqualsSubstitution(hw, 'real')
 
     def make_control_node(param_files, condition):
         return Node(
@@ -94,9 +108,10 @@ def generate_launch_description():
             condition=condition,
         )
 
-    # Exactly one of these starts. hw:=real layers the overrides on top of the
-    # shared controllers.yaml, so mock and gz load the shared file alone.
-    control_node_sim = make_control_node([controllers_file], UnlessCondition(is_real))
+    # mock and real run ros2_control_node; in Gazebo the plugin hosts the controller manager.
+    # hw:=real layers the overrides on top of the shared controllers.yaml.
+    control_node_sim = make_control_node(
+        [controllers_file], IfCondition(EqualsSubstitution(hw, 'mock')))
     control_node_real = make_control_node(
         [controllers_file, real_overrides_file], IfCondition(is_real))
 
@@ -106,12 +121,46 @@ def generate_launch_description():
         arguments=['-d', rviz_file],
         output='log',
         condition=IfCondition(LaunchConfiguration('rviz')),
+        parameters=[sim_time],
+    )
+
+    # Gazebo: find the meshes (package://so101_description/... resolves under share/),
+    # start the simulator, spawn the robot from /robot_description, bridge the clock.
+    gz_resource_path = AppendEnvironmentVariable(
+        'GZ_SIM_RESOURCE_PATH',
+        os.path.dirname(get_package_share_directory('so101_description')),
+        condition=IfCondition(is_gz),
+    )
+    gz_sim = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(PathJoinSubstitution(
+            [FindPackageShare('ros_gz_sim'), 'launch', 'gz_sim.launch.py'])),
+        launch_arguments={'gz_args': LaunchConfiguration('gz_args')}.items(),
+        condition=IfCondition(is_gz),
+    )
+    gz_spawn = Node(
+        package='ros_gz_sim',
+        executable='create',
+        arguments=['-topic', 'robot_description', '-name', 'so101'],
+        output='screen',
+        condition=IfCondition(is_gz),
+    )
+    clock_bridge = Node(
+        package='ros_gz_bridge',
+        executable='parameter_bridge',
+        arguments=['/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock'],
+        output='screen',
+        condition=IfCondition(is_gz),
     )
 
     return LaunchDescription([
         hw_arg,
         rviz_arg,
         motion_arg,
+        gz_args_arg,
+        gz_resource_path,
+        gz_sim,
+        gz_spawn,
+        clock_bridge,
         robot_state_publisher,
         control_node_sim,
         control_node_real,

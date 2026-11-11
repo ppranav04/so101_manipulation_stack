@@ -9,4 +9,16 @@
 
   <xacro:so101_ros2_control hw="$(arg hw)"/>
 
+  <!-- Gazebo only: this plugin runs the controller manager inside the simulator and loads the
+       controllers file the launch file passes in (the description does not depend on bringup). -->
+  <xacro:arg name="gz_controllers" default=""/>
+  <xacro:if value="${'$(arg hw)' == 'gz'}">
+    <gazebo>
+      <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+        <parameters>$(arg gz_controllers)</parameters>
+      </plugin>
+    </gazebo>
+  </xacro:if>
+
+
 </robot>
