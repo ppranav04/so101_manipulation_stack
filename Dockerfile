@@ -19,6 +19,7 @@ COPY so101_description/package.xml src/so101_manipulation_stack/so101_descriptio
 COPY so101_calibration/package.xml src/so101_manipulation_stack/so101_calibration/
 COPY so101_ik/package.xml src/so101_manipulation_stack/so101_ik/
 COPY so101_perception/package.xml src/so101_manipulation_stack/so101_perception/
+COPY so101_moveit_config/package.xml src/so101_manipulation_stack/so101_moveit_config/
 
 # Install everything declared in the package.xml files.
 RUN apt-get update \
