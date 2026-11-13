@@ -9,10 +9,12 @@ from launch.actions import (
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import (
-    Command, EqualsSubstitution, LaunchConfiguration, PathJoinSubstitution)
+    AndSubstitution, Command, EqualsSubstitution, LaunchConfiguration, NotSubstitution,
+    PathJoinSubstitution)
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
+from moveit_configs_utils import MoveItConfigsBuilder
 
 
 def make_spawners(context):
@@ -64,7 +66,16 @@ def generate_launch_description():
         description='In CI testing rviz is disabled by giving false argument'
     )
 
+    moveit_arg = DeclareLaunchArgument(
+        'moveit',
+        default_value='false',
+        choices=['true', 'false'],
+        description='Start the move_group and the MoveIt RViz panel'
+    )
+
     hw = LaunchConfiguration('hw')
+    use_rviz = LaunchConfiguration('rviz')
+    use_moveit = LaunchConfiguration('moveit')
 
     # Paths
     xacro_file = PathJoinSubstitution(
@@ -121,8 +132,45 @@ def generate_launch_description():
         executable='rviz2',
         arguments=['-d', rviz_file],
         output='log',
-        condition=IfCondition(LaunchConfiguration('rviz')),
+        condition=IfCondition(AndSubstitution(use_rviz, NotSubstitution(use_moveit))),
         parameters=[sim_time],
+    )
+
+    moveit_config = (
+        MoveItConfigsBuilder('so101', package_name='so101_moveit_config')
+        .planning_pipelines(pipelines=['ompl'])
+        .to_moveit_configs()
+    )
+    move_group_settings = {
+        'publish_robot_description_semantic': True,
+        'allow_trajectory_execution': True,
+    }
+    move_group = Node(
+        package='moveit_ros_move_group',
+        executable='move_group',
+        output='both',
+        parameters=[moveit_config.to_dict(), robot_description, sim_time, move_group_settings],
+        condition=IfCondition(use_moveit),
+    )
+
+    moveit_rviz_file = PathJoinSubstitution(
+        [FindPackageShare('so101_moveit_config'), 'config', 'moveit.rviz']
+    )
+
+    moveit_rviz = Node(
+        package='rviz2',
+        executable='rviz2',
+        arguments=['-d', moveit_rviz_file],
+        output='log',
+        condition=IfCondition(AndSubstitution(use_rviz, use_moveit)),
+        parameters=[
+            robot_description,
+            moveit_config.robot_description_semantic,
+            moveit_config.robot_description_kinematics,
+            moveit_config.planning_pipelines,
+            moveit_config.joint_limits,
+            sim_time,
+        ],
     )
 
     # Gazebo: find the meshes (package://so101_description/... resolves under share/),
@@ -156,6 +204,7 @@ def generate_launch_description():
     return LaunchDescription([
         hw_arg,
         rviz_arg,
+        moveit_arg,
         motion_arg,
         gz_args_arg,
         gz_resource_path,
@@ -167,4 +216,6 @@ def generate_launch_description():
         control_node_real,
         OpaqueFunction(function=make_spawners),
         rviz,
+        move_group,
+        moveit_rviz,
     ])
