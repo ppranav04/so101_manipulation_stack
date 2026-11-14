@@ -11,11 +11,11 @@ find_package(ament_cmake REQUIRED)
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
 
-install(DIRECTORY config launch rviz
-        DESTINATION share/${PROJECT_NAME})
-
 install(DIRECTORY config launch rviz worlds
         DESTINATION share/${PROJECT_NAME})
+
+install(PROGRAMS scripts/moveit_baseline.py
+        DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
