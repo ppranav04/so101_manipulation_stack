@@ -76,7 +76,8 @@ Velocity limit: 5.0 rad/s on every joint. write() uses it as the per-cycle step 
 
 ## Open
 
-- At rest, elbow_flex sits on its stop, outside its limit. The activation check refuses
-  to enable torque there; hold the forearm off the stop before activating.
-- The zeros of shoulder_pan, shoulder_lift, elbow_flex, wrist_flex and wrist_roll are
-  not verified.
+- At rest, elbow_flex sits on its stop, up to ~0.06 rad outside its URDF limit. on_activate
+  accepts a joint up to 50 counts (~0.077 rad) outside its limit (WARN), seeds Goal_Position
+  clamped to the EEPROM range, and write() then moves it to the limit. After activation the
+  elbow ends 0-0.034 rad above its limit (gravity sag). MoveIt refuses that start state;
+  `so101_hardware/scripts/unpark.py` moves every joint MARGIN inside its limits first.

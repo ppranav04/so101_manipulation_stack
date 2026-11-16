@@ -29,7 +29,7 @@ from trajectory_msgs.msg import JointTrajectoryPoint
 ARM_JOINTS = ['shoulder_pan', 'shoulder_lift', 'elbow_flex', 'wrist_flex', 'wrist_roll']
 ACTION = '/joint_trajectory_controller/follow_joint_trajectory'
 STATE = '/joint_trajectory_controller/controller_state'
-MARGIN = 0.12      # rad inside the limit; > measured elbow sag (0.034 rad) with room to spare
+MARGIN = 0.18      # rad inside the limit; > measured elbow sag (0.034 rad) with room to spare
 MAX_MOVE = 0.3     # rad; the activation band is 0.077 rad, so more means something is wrong
 SPEED = 0.1        # rad/s for the largest move
 MIN_DURATION = 2.0  # s
