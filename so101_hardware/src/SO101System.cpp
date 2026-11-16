@@ -45,6 +45,11 @@ constexpr std::chrono::microseconds kReadTimeout{5000};
 // the goal jump 10x further; it moves as if two normal 10 ms cycles had passed.
 constexpr double kMaxWritePeriodS = 0.02;
 
+// How far outside its URDF limits a joint may be and still be activated. At rest, elbow_flex
+// sits on its mechanical stop, 26-38 counts above its upper limit (joint_limits.md, 3 runs).
+// 50 counts covers that with margin and stays far from the wrist_roll encoder wrap.
+constexpr double kActivationMarginRad = 50.0 / conversion::kCountsPerRad;  // ~0.077 rad
+
 // Homing_Offset has an 11-bit magnitude; bit 11 is the sign.
 constexpr long kMaxAbsHomingOffset = 2047;
 
@@ -332,29 +337,49 @@ hardware_interface::CallbackReturn SO101System::on_activate(
     return fail("read failed");
   }
 
-  // 2. EVERY joint inside its limits. Policy: refuse, never move at torque-on.
+  // 2. EVERY joint within kActivationMarginRad of its limits, else refuse.
   std::array<double, kNumJoints> pos{};
   for (std::size_t i = 0; i < kNumJoints; ++i) {
     pos[i] = conversion::counts_to_rad(signs_[i], offsets_[i], present_counts_[i]);
   }
   std::array<bool, kNumJoints> outside{};
+  if (conversion::mark_outside_band(pos.data(), min_positions_.data(), max_positions_.data(),
+      kActivationMarginRad, kNumJoints, outside.data()) > 0)
+  {
+    for (std::size_t i = 0; i < kNumJoints; ++i) {
+      if (outside[i]) {
+        RCLCPP_ERROR(get_logger(), "on_activate: %s at %.4f rad is outside [%.4f, %.4f] by more "
+            "than %.4f rad", info_.joints[i].name.c_str(), pos[i], min_positions_[i],
+            max_positions_[i], kActivationMarginRad);
+      }
+    }
+    return fail("joint(s) too far outside limits, move them inside by hand");
+  }
+  // Inside the band but outside the limits: accepted. The first write() clamps the goal to the
+  // limit, so the joint moves there (at most the band, at the write() rate limit).
+  std::size_t in_band = 0;
   if (conversion::mark_outside_limits(pos.data(), min_positions_.data(), max_positions_.data(),
       kNumJoints, outside.data()) > 0)
   {
     for (std::size_t i = 0; i < kNumJoints; ++i) {
       if (outside[i]) {
-        RCLCPP_ERROR(get_logger(), "on_activate: %s at %.4f rad is outside [%.4f, %.4f]",
-            info_.joints[i].name.c_str(), pos[i], min_positions_[i], max_positions_[i]);
+        ++in_band;
+        RCLCPP_WARN(get_logger(), "on_activate: %s at %.4f rad is outside [%.4f, %.4f] but "
+            "inside the activation band; it will move to the limit", info_.joints[i].name.c_str(),
+            pos[i], min_positions_[i], max_positions_[i]);
       }
     }
-    return fail("joint(s) outside limits, move them inside by hand");
   }
 
   // 3. Goal_Position = present position, so torque-on holds still instead of jumping to an
-  //    old goal. 4. Commands = the same positions, so the first write() holds still too.
+  //    old goal. 4. Commands = the same positions, so the first write() holds still too,
+  //    except for joints in the band, which write() clamps to their limit.
   for (std::size_t i = 0; i < kNumJoints; ++i) {
-    // Inside the URDF limits means inside the EEPROM range, so 0..4095: no sign bit needed.
-    const auto c = static_cast<std::uint16_t>(present_counts_[i]);
+    // Inside the band, a joint can sit a few counts past its EEPROM limit (elbow rests at up to
+    // 3109, EEPROM max 3106). Clamp to the EEPROM range: the servo cannot be sent past it, and
+    // the result is 0..4095, so no sign bit is needed.
+    const auto c = static_cast<std::uint16_t>(std::clamp<std::int32_t>(present_counts_[i],
+        servo_configs_[i].min_position_limit, servo_configs_[i].max_position_limit));
     const std::uint8_t goal[2] = {sts::low_byte(c), sts::high_byte(c)};
     std::uint8_t servo_error = 0;
     if (!write_ram(i, sts::reg::kGoalPosition, goal, 2, servo_error) || servo_error != 0) {
@@ -383,8 +408,8 @@ hardware_interface::CallbackReturn SO101System::on_activate(
     }
   }
 
-  RCLCPP_INFO(get_logger(), "on_activate: all %zu joints inside limits, goals seeded, torque on",
-      kNumJoints);
+  RCLCPP_INFO(get_logger(), "on_activate: %zu of %zu joints inside limits (%zu in the band), "
+      "goals seeded, torque on", kNumJoints - in_band, kNumJoints, in_band);
   return CallbackReturn::SUCCESS;
 }
 

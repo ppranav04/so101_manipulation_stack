@@ -35,6 +35,12 @@ std::size_t mark_outside_limits(
   const double * positions, const double * mins, const double * maxs, std::size_t count,
   bool * outside);
 
+// Same check with a band: a joint counts as outside only when it is more than margin (>= 0)
+// below mins[i] or above maxs[i], or NaN. margin = 0 is exactly mark_outside_limits.
+std::size_t mark_outside_band(
+  const double * positions, const double * mins, const double * maxs, double margin,
+  std::size_t count, bool * outside);
+
 } // namespace conversion
 } // namespace so101_hardware
 

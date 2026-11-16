@@ -184,3 +184,70 @@ TEST(LimitCommand, OutputStaysInsideLimitsAndStep)
     }
   }
 }
+
+// The activation band, 50 counts as in SO101System.cpp.
+constexpr double kBand = 50.0 / conv::kCountsPerRad;
+
+TEST(OutsideBand, ZeroBandMatchesTheLimits)
+{
+  auto p = midpoints();
+  p[2] = kMax[2] + 1e-3;
+  bool a[kN];
+  bool b[kN];
+  EXPECT_EQ(conv::mark_outside_band(p.data(), kMin, kMax, 0.0, kN, a),
+    conv::mark_outside_limits(p.data(), kMin, kMax, kN, b));
+  for (std::size_t i = 0; i < kN; ++i) {
+    EXPECT_EQ(a[i], b[i]) << "joint " << i;
+  }
+}
+
+TEST(OutsideBand, ElbowRestingOnItsStopIsInsideTheBand)
+{
+  // Measured rest: up to 3109 counts, upper limit 3071 counts (38 counts above).
+  auto p = midpoints();
+  p[2] = kMax[2] + 38.0 / conv::kCountsPerRad;
+  bool out[kN];
+  EXPECT_EQ(conv::mark_outside_band(p.data(), kMin, kMax, kBand, kN, out), 0u);
+  EXPECT_EQ(conv::mark_outside_limits(p.data(), kMin, kMax, kN, out), 1u);
+  EXPECT_TRUE(out[2]);
+}
+
+TEST(OutsideBand, TheBandEdgeIsInside)
+{
+  bool out[kN];
+  for (std::size_t j = 0; j < kN; ++j) {
+    auto p = midpoints();
+    p[j] = kMax[j] + kBand;
+    EXPECT_EQ(conv::mark_outside_band(p.data(), kMin, kMax, kBand, kN, out), 0u) << "joint " << j;
+    p[j] = kMin[j] - kBand;
+    EXPECT_EQ(conv::mark_outside_band(p.data(), kMin, kMax, kBand, kN, out), 0u) << "joint " << j;
+  }
+}
+
+// The safety property again: past the band, no joint is skipped, below or above.
+TEST(OutsideBand, EveryJointPastTheBandIsChecked)
+{
+  for (std::size_t j = 0; j < kN; ++j) {
+    for (const double p_j : {kMin[j] - kBand - 1e-3, kMax[j] + kBand + 1e-3}) {
+      auto p = midpoints();
+      p[j] = p_j;
+      bool out[kN];
+      ASSERT_EQ(conv::mark_outside_band(p.data(), kMin, kMax, kBand, kN, out), 1u)
+        << "joint " << j << " at " << p_j;
+      for (std::size_t k = 0; k < kN; ++k) {
+        EXPECT_EQ(out[k], k == j) << "joint " << j << ", flag " << k;
+      }
+    }
+  }
+}
+
+TEST(OutsideBand, NaNAndTheWrapStayOutside)
+{
+  auto p = midpoints();
+  p[2] = std::numeric_limits<double>::quiet_NaN();
+  p[4] = 3.10;  // wrist_roll past the encoder wrap
+  bool out[kN];
+  EXPECT_EQ(conv::mark_outside_band(p.data(), kMin, kMax, kBand, kN, out), 2u);
+  EXPECT_TRUE(out[2]);
+  EXPECT_TRUE(out[4]);
+}

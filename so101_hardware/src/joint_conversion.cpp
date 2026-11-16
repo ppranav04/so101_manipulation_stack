@@ -35,10 +35,17 @@ std::size_t mark_outside_limits(
   const double * positions, const double * mins, const double * maxs, std::size_t count,
   bool * outside)
 {
+  return mark_outside_band(positions, mins, maxs, 0.0, count, outside);
+}
+
+std::size_t mark_outside_band(
+  const double * positions, const double * mins, const double * maxs, double margin,
+  std::size_t count, bool * outside)
+{
   std::size_t n = 0;
   for (std::size_t i = 0; i < count; ++i) {
     // "Not inside" rather than "below or above": NaN fails every comparison, so it lands here.
-    outside[i] = !(positions[i] >= mins[i] && positions[i] <= maxs[i]);
+    outside[i] = !(positions[i] >= mins[i] - margin && positions[i] <= maxs[i] + margin);
     if (outside[i]) {
       ++n;
     }
