@@ -1,4 +1,4 @@
-# MoveIt baseline on mock and Gazebo (2026-11-15)
+# MoveIt baseline on mock, Gazebo and the real arm (2026-11-15, real arm 2026-11-17)
 
 ## Summary
 
@@ -10,6 +10,13 @@ straight joint-space line, and every final error was within the 0.001 rad goal t
 In Gazebo, a held joint moved by at most 6.6e-9 rad over 30 s, so the start-state check
 before execution is not at risk from simulator drift. One operating issue was found and
 explained: RViz's initial start state is not the robot's current state (see Known issue).
+
+On the real arm the same script and settings gave 10/10 runs, with planning time unchanged
+(median 22 ms, max 34 ms) and execution tracking the trajectory in real time. Final error
+there is tracking error: 0.084-0.103 rad at `zero`, dominated by elbow_flex gravity sag.
+Three earlier attempts each stopped on a `home -> zero` run because that sag exceeded the
+trajectory controller's 0.1 rad elbow goal tolerance; the tolerance was raised to 0.15 rad
+(see Real arm).
 
 ## Setup
 
@@ -123,6 +130,102 @@ Operating rule: before the first Plan after every launch, set Start State to `<c
 Keep `allowed_start_tolerance` at 0.01 rad; on the real arm this check is what turns a stale
 start state into a refusal instead of a jump.
 
+## Real arm (2026-11-17)
+
+### Setup differences
+
+- Backend `hw:=real` (SO101System driver, 100 Hz), same controllers.yaml, same script,
+  scaling, planner and poses as above.
+- Activation from the rest pose, then `so101_hardware/scripts/unpark.py` moves every joint
+  at least 0.18 rad inside its URDF limits (MoveIt refuses a start state outside them).
+- Trajectory controller goal tolerance for elbow_flex raised from 0.1 to 0.15 rad
+  (reason below). Other joints unchanged: pan 0.02, lift 0.1, wrist_flex 0.05,
+  wrist_roll 0.04.
+
+```
+ros2 launch so101_bringup so101.launch.py hw:=real motion_controllers:=true moveit:=true
+ros2 control set_hardware_component_state SO101System inactive
+ros2 control set_hardware_component_state SO101System active
+ros2 control switch_controllers --strict --activate joint_state_broadcaster \
+  joint_trajectory_controller parallel_gripper_controller
+python3 so101_hardware/scripts/unpark.py
+ros2 run so101_bringup moveit_baseline.py --runs 10 --out moveit_baseline_real.csv
+```
+
+### Results, 10 runs
+
+| | mock | gz | real |
+|---|---|---|---|
+| Planned and executed | 10/10 | 10/10 | 10/10 |
+| `planning_time`, median (max) | 12.9 (32.1) ms | 21.5 (28.9) ms | 21.5 (33.9) ms |
+| Plan wall time, median (max) | 36.2 (51.4) ms | 41.2 (52.2) ms | 40.4 (53.8) ms |
+| Trajectory duration, min-max | 9.108-9.142 s | 9.115-9.130 s | 8.661-9.402 s |
+| Execution wall time minus duration | 0.05-0.08 s | 1.3-1.6 s | 0.03-0.09 s |
+| Waypoints | 93 | 93 | 88-96 |
+| Joint-space path length, min-max | 2.1138-2.1170 rad | 2.1112-2.1161 rad | 1.9835-2.2205 rad |
+| Final error (max over joints) at `zero`, min-max | <= 0.0010 rad | <= 0.0010 rad | 0.0844-0.1028 rad |
+| Final error (max over joints) at `home`, min-max | <= 0.0010 rad | <= 0.0010 rad | 0.0424-0.0455 rad |
+
+### Interpretation
+
+- **Planning does not depend on the backend**, as on mock and gz: the planner sees only
+  joint states.
+- **The real arm executes in real time.** Execution wall time exceeds trajectory duration
+  by 0.03-0.09 s, the same overhead as mock.
+- **Durations and paths vary because the start pose varies.** Each run starts where the
+  previous one ended, and on the real arm that is the goal plus gravity sag, not the goal.
+  Runs to `zero` took 8.66-9.09 s and runs to `home` 9.33-9.40 s (mock: 9.11-9.14 s both
+  ways), and path lengths spread around the 2.1153 rad straight line by -0.13/+0.11 rad.
+- **Final error is tracking error, dominated by gravity.** The STS3215 holds position with
+  a proportional loop, so a joint carrying a gravity load settles at an offset that grows
+  with the load. At `zero` the error is 0.084-0.103 rad; at `home` 0.042-0.046 rad. The
+  `zero` error is elbow_flex (from the aborts below); which joint gives the `home` error is
+  not recorded (the CSV stores only the maximum over joints).
+
+### Elbow goal tolerance
+
+Three attempts with the original 0.1 rad elbow goal tolerance each stopped on a
+`home -> zero` run, after 4, 6 and 2 successful runs:
+
+```
+State tolerances failed for joint 2:  Position Error: -0.103454, Position Tolerance: 0.100000
+Aborted due to goal_time_tolerance exceeding by 0.506408 seconds
+Controller 'joint_trajectory_controller' failed with error GOAL_TOLERANCE_VIOLATED
+```
+
+Joint 2 is elbow_flex. The three aborts reported 0.1035, 0.1050 and 0.1050 rad; the
+successful `zero` runs of the same attempts ended at 0.083-0.094 rad. The trajectory itself
+completed every time: the controller waits `goal_time` (0.5 s) after the last point for
+every joint to be inside its goal tolerance, and the sag holds the elbow just outside it.
+With elbow sag spread across 0.083-0.105 rad, a 0.1 rad tolerance makes the outcome of each
+`zero` run depend on where in that spread it lands.
+
+The tolerance was raised to 0.15 rad, above the largest measured sag (0.105 rad) with
+0.045 rad margin. In the 10/10 run, two of five `zero` runs ended at 0.103 rad and would have
+failed at 0.1. The tolerance describes the arm as measured; reducing the sag itself
+(servo position gain, or gravity feedforward in the command) is left for the pick-and-place
+error budget.
+
+### Servo voltage flag
+
+During these sessions the gripper servo (and less often wrist_roll and wrist_flex)
+occasionally reports its undervoltage flag on a single read, at 3.8-3.9 V, with normal
+readings (5.3 V) 10-15 ms before and after. The same single-read glitches occur with torque
+off on every servo, so they are not caused by load current. Before the driver debounced the
+flag, one such read turned off torque mid-trajectory. The driver now faults only after 10
+consecutive flagged reads; other error bits still fault at once. In the 10-run baseline
+session, 6 single-read flags were tolerated and no fault occurred.
+
+### RViz start state on the real arm
+
+Same rule as on gz, extended. In a manual RViz session, Start State was set to `<current>`
+before the first Plan only. Two moves executed; the third was refused before moving:
+"start point deviates from current robot state more than 0.01 at joint 'shoulder_pan'".
+Re-planning executed normally. A likely reason (not verified) is that RViz kept the previous
+goal as the start state while the arm ended up to 0.02 rad (pan's goal tolerance) away from
+it, more than the 0.01 rad start check allows. Operating rule: set Start State to
+`<current>` before every Plan. The script is not affected.
+
 ## Limitations
 
 - One pose pair (home <-> zero), 10 runs per backend. This pair gives near-straight
@@ -132,12 +235,20 @@ start state into a refusal instead of a jump.
   mock or gz.
 - RTF was not recorded during the baseline runs. The execution-time explanation is
   inferred from the duration/wall-time ratio.
-- Real arm not included (next step).
+- Real arm: one session of 10 runs. The final error column records only the largest joint
+  error, so per-joint sag at `home` is not known.
+- Real arm hold drift at a loaded pose was not measured; earlier idle holds at the folded
+  rest pose showed 0 counts drift.
+- The elbow goal tolerance (0.15 rad) is set from this pose pair. Poses with more gravity
+  load on the elbow may sag further.
 
 ## Files
+
+In `data/moveit_baseline/`:
 
 - `moveit_baseline_mock.csv`, `moveit_baseline_gz.csv`: one row per run (plan and execute
   codes, planning time, wall times, trajectory duration, waypoints, path length, final
   error).
 - `gz_hold_after_move_{1,2,3}.csv`, `gz_hold_idle_{1,2,3}.csv`: latest/min/max per joint
   over 30 s.
+- `moveit_baseline_real.csv`: the 10-run real-arm baseline (same columns).

@@ -20,7 +20,7 @@ of the other five joints are not verified.
 ## Signs
 
 Each joint was moved by hand in one direction, and the sign of the position change was
-compared with the direction the RViz model moved (joint_signs.csv).
+compared with the direction the RViz model moved (data/joint_limits/joint_signs.csv).
 
 | Joint | Motion | Position change | RViz agrees |
 |---|---|---|---|
@@ -33,7 +33,7 @@ compared with the direction the RViz model moved (joint_signs.csv).
 
 ## Travel
 
-Three runs, each joint pushed gently to both stops (joint_travel_run{1,2,3}.csv).
+Three runs, each joint pushed gently to both stops (data/joint_limits/joint_travel_run{1,2,3}.csv).
 The ranges below span the extremes reached across the three runs, in counts.
 
 | Joint | Low stop | High stop | EEPROM | Rest |

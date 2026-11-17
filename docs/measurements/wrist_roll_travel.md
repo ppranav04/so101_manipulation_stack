@@ -100,6 +100,8 @@ re-routing the camera cable (tried; no effect).
 
 ## Data files
 
+In `data/wrist_roll_travel/`:
+
 - wrist_roll_travel_2026-10-28_setA.csv: earlier run under calibration set A (superseded).
 - wrist_roll_travel_run1.csv, wrist_roll_travel_run2.csv: before re-route, runs 1-2.
 - wrist_roll_travel_run3.csv: after re-route, run 3. The script's fixed output name made

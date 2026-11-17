@@ -40,6 +40,8 @@ joint_trajectory_controller:
         goal: 0.1
       elbow_flex:
         trajectory: 0.2
+        # Gravity sag at the end of a move: up to 0.105 rad at the 'zero' pose on the real arm
+        # (MoveIt baseline 2026-11-17; the servo's P-only position loop). 0.15 keeps margin.
         goal: 0.15
       wrist_flex:
         trajectory: 0.2
