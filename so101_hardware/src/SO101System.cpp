@@ -50,6 +50,12 @@ constexpr double kMaxWritePeriodS = 0.02;
 // 50 counts covers that with margin and stays far from the wrist_roll encoder wrap.
 constexpr double kActivationMarginRad = 50.0 / conversion::kCountsPerRad;  // ~0.077 rad
 
+// Consecutive reads with only the voltage flag set before read() faults. Measured 2026-11-17
+// with torque off (941 s, 65 Hz): every voltage flag was a single read with clean reads around
+// it (servo measurement glitches on IDs 4-6). 10 reads = 100 ms at 100 Hz; a real supply
+// collapse lasts longer and still faults. Other error bits fault on the first read.
+constexpr std::uint32_t kVoltageFlagDebounceReads = 10;
+
 // Homing_Offset has an 11-bit magnitude; bit 11 is the sign.
 constexpr long kMaxAbsHomingOffset = 2047;
 
@@ -331,6 +337,8 @@ hardware_interface::CallbackReturn SO101System::on_activate(
   // Start a fresh supply watch: any real reading is below 255 and above 0.
   min_voltage_dv_.fill(255);
   max_temperature_c_.fill(0);
+  voltage_flag_run_.fill(0);
+  voltage_flag_count_.fill(0);
 
   // 1. A fresh snapshot. read() checks the bus and every servo's error flags.
   if (read(get_clock()->now(), rclcpp::Duration(0, 0)) != hardware_interface::return_type::OK) {
@@ -497,13 +505,25 @@ hardware_interface::return_type SO101System::read(
     sts::decode_present_block(present_raw_.data() + i * sts::reg::kPresentBlockLength,
     sts::reg::kPresentBlockLength, s);
 
-    if (r.servo_errors[i] != 0) {
+    const conversion::ServoErrorVerdict verdict = conversion::check_servo_error(r.servo_errors[i],
+      voltage_flag_run_[i], kVoltageFlagDebounceReads);
+
+    if (verdict == conversion::ServoErrorVerdict::kFault) {
       RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 1000,
-          "read: %s (ID %u) reports servo error flags 0x%02X at %.1f V, %u C",
-          info_.joints[i].name.c_str(), static_cast<unsigned>(servo_ids_[i]),
-          static_cast<unsigned>(r.servo_errors[i]), s.voltage_dv / 10.0,
-          static_cast<unsigned>(s.temperature_c));
+      "read: %s (ID %u) reports servo error flags 0x%02X at %.1f V, %u C (%u in a row)",
+      info_.joints[i].name.c_str(), static_cast<unsigned>(servo_ids_[i]),
+      static_cast<unsigned>(r.servo_errors[i]), s.voltage_dv / 10.0,
+      static_cast<unsigned>(s.temperature_c), static_cast<unsigned>(voltage_flag_run_[i]));
       return return_type::ERROR;
+    }
+
+    if (verdict == conversion::ServoErrorVerdict::kVoltageTransient) {
+      ++voltage_flag_count_[i];
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+          "read: %s (ID %u) voltage flag at %.1f V (%u in a row, tolerated up to %u)",
+          info_.joints[i].name.c_str(), static_cast<unsigned>(servo_ids_[i]),
+          s.voltage_dv / 10.0, static_cast<unsigned>(voltage_flag_run_[i]),
+          static_cast<unsigned>(kVoltageFlagDebounceReads - 1));
     }
 
     counts[i] = s.position;
@@ -597,9 +617,11 @@ bool SO101System::write_ram(
 void SO101System::log_supply_stats(const char * when)
 {
   for (std::size_t i = 0; i < kNumJoints; ++i) {
-    RCLCPP_INFO(get_logger(), "%s: %-14s since activate: min %.1f V, max %u C", when,
-        info_.joints[i].name.c_str(), min_voltage_dv_[i] / 10.0,
-        static_cast<unsigned>(max_temperature_c_[i]));
+    RCLCPP_INFO(get_logger(),
+        "%s: %-14s since activate: min %.1f V, max %u C (single reads),%u voltage flags tolerated",
+        when, info_.joints[i].name.c_str(), min_voltage_dv_[i] / 10.0,
+        static_cast<unsigned>(max_temperature_c_[i]),
+        static_cast<unsigned>(voltage_flag_count_[i]));
   }
 }
 

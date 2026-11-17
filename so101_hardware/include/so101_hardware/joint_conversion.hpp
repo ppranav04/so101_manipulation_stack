@@ -41,6 +41,22 @@ std::size_t mark_outside_band(
   const double * positions, const double * mins, const double * maxs, double margin,
   std::size_t count, bool * outside);
 
+// Servo status error byte, bit 0 (SCServo SDK ERRBIT_VOLTAGE): input voltage outside the
+// servo's Min/Max_Voltage_Limit.
+constexpr std::uint8_t kErrorVoltage = 0x01;
+
+// What read() should do with one servo's status error byte.
+enum class ServoErrorVerdict
+{
+  kOk,                // no flag
+  kVoltageTransient,  // voltage flag alone, fewer than max_run reads in a row so far: keep going
+  kFault,             // any other bit, or the voltage flag alone max_run reads in a row
+};
+
+// Debounce for one servo. run counts consecutive reads whose error byte is exactly
+// kErrorVoltage; a clean read resets it. max_run (>= 1) is the run length that faults;
+// max_run = 1 faults on the first flag. Any other bit faults at once, alone or with bit 0.
+ServoErrorVerdict check_servo_error(std::uint8_t error, std::uint32_t & run, std::uint32_t max_run);
 } // namespace conversion
 } // namespace so101_hardware
 

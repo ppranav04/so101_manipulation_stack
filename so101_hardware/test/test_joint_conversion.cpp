@@ -251,3 +251,74 @@ TEST(OutsideBand, NaNAndTheWrapStayOutside)
   EXPECT_TRUE(out[2]);
   EXPECT_TRUE(out[4]);
 }
+
+constexpr std::uint32_t kDebounce = 10;
+using Verdict = conv::ServoErrorVerdict;
+
+TEST(ServoErrorDebounce, CleanReadIsOkAndResetsTheRun)
+{
+  std::uint32_t run = 7;
+  EXPECT_EQ(conv::check_servo_error(0x00, run, kDebounce), Verdict::kOk);
+  EXPECT_EQ(run, 0u);
+}
+
+TEST(ServoErrorDebounce, NineVoltageFlagsInARowAreTolerated)
+{
+  std::uint32_t run = 0;
+  for (std::uint32_t k = 1; k < kDebounce; ++k) {
+    EXPECT_EQ(conv::check_servo_error(conv::kErrorVoltage, run, kDebounce),
+      Verdict::kVoltageTransient) << "flag " << k;
+  }
+  EXPECT_EQ(run, kDebounce - 1);
+}
+
+TEST(ServoErrorDebounce, TheTenthVoltageFlagInARowFaults)
+{
+  std::uint32_t run = 0;
+  for (std::uint32_t k = 1; k < kDebounce; ++k) {
+    conv::check_servo_error(conv::kErrorVoltage, run, kDebounce);
+  }
+  EXPECT_EQ(conv::check_servo_error(conv::kErrorVoltage, run, kDebounce), Verdict::kFault);
+  // Stays faulted (and the counter does not grow past max_run) if read() is called again.
+  EXPECT_EQ(conv::check_servo_error(conv::kErrorVoltage, run, kDebounce), Verdict::kFault);
+  EXPECT_EQ(run, kDebounce);
+}
+
+TEST(ServoErrorDebounce, ACleanReadRestartsTheCount)
+{
+  std::uint32_t run = 0;
+  for (int cycle = 0; cycle < 3; ++cycle) {
+    for (std::uint32_t k = 1; k < kDebounce; ++k) {
+      ASSERT_EQ(conv::check_servo_error(conv::kErrorVoltage, run, kDebounce),
+        Verdict::kVoltageTransient);
+    }
+    ASSERT_EQ(conv::check_servo_error(0x00, run, kDebounce), Verdict::kOk);
+  }
+}
+
+TEST(ServoErrorDebounce, MeasuredGlitchPatternNeverFaults)
+{
+  // 2026-11-17, torque off, 941 s: every voltage flag was a single read between clean reads.
+  std::uint32_t run = 0;
+  for (int k = 0; k < 10000; ++k) {
+    const std::uint8_t error = (k % 7 == 0) ? conv::kErrorVoltage : 0x00;
+    ASSERT_NE(conv::check_servo_error(error, run, kDebounce), Verdict::kFault) << "read " << k;
+  }
+}
+
+TEST(ServoErrorDebounce, OtherBitsFaultImmediately)
+{
+  // 0x02 angle, 0x04 overheat, 0x08 overcurrent, 0x20 overload; 0x03 and 0x21 carry the
+  // voltage bit too and must not be treated as a voltage transient.
+  for (const std::uint8_t error : {0x02, 0x04, 0x08, 0x20, 0x03, 0x21, 0xFF}) {
+    std::uint32_t run = 0;
+    EXPECT_EQ(conv::check_servo_error(error, run, kDebounce), Verdict::kFault)
+      << "error 0x" << std::hex << static_cast<int>(error);
+  }
+}
+
+TEST(ServoErrorDebounce, MaxRunOneFaultsOnTheFirstFlag)
+{
+  std::uint32_t run = 0;
+  EXPECT_EQ(conv::check_servo_error(conv::kErrorVoltage, run, 1), Verdict::kFault);
+}

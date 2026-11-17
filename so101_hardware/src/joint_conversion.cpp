@@ -53,5 +53,19 @@ std::size_t mark_outside_band(
   return n;
 }
 
+ServoErrorVerdict check_servo_error(std::uint8_t error, std::uint32_t & run, std::uint32_t max_run)
+{
+  if (error == 0) {
+    run = 0;
+    return ServoErrorVerdict::kOk;
+  }
+  if (error != kErrorVoltage) {
+    return ServoErrorVerdict::kFault;
+  }
+  if(run < max_run) {
+    ++run;
+  }
+  return run >= max_run ? ServoErrorVerdict::kFault : ServoErrorVerdict::kVoltageTransient;
+}
 } // namespace conversion
 } // namespace so101_hardware

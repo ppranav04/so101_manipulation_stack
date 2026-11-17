@@ -84,6 +84,11 @@ private:
   std::array<std::uint8_t, kNumJoints> min_voltage_dv_{};
   std::array<std::uint8_t, kNumJoints> max_temperature_c_{};
 
+  // Voltage-flag debounce since the last on_activate: the current run of consecutive reads with
+  // only the voltage flag set (reset by a clean read), and how many such reads were tolerated.
+  std::array<std::uint32_t, kNumJoints> voltage_flag_run_{};
+  std::array<std::uint32_t, kNumJoints> voltage_flag_count_{};
+
   // One SYNC READ fills this: per servo [pos lo, pos hi, vel lo, vel hi, load lo, load hi].
   std::array<std::uint8_t, kNumJoints * sts::reg::kPresentBlockLength> present_raw_{};
 
