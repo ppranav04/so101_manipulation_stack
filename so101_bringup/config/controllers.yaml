@@ -40,7 +40,7 @@ joint_trajectory_controller:
         goal: 0.1
       elbow_flex:
         trajectory: 0.2
-        goal: 0.1
+        goal: 0.15
       wrist_flex:
         trajectory: 0.2
         goal: 0.05
