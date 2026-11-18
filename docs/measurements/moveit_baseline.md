@@ -98,9 +98,10 @@ Final positions were within 0.00091 rad of `zero` in all six files (the goal-tol
 slack described above).
 
 Gazebo does not drift: its position interface holds the commanded position, and gravity
-does not act against a torque-limited motor as it does on the STS3215. The real arm's elbow
-creeps by 0.03-0.08 rad while held (first_motion.md), so this result does not transfer to
-the real arm. The same recording has to be made there before choosing the start tolerance.
+does not act against a torque-limited motor as it does on the STS3215. On the real arm the
+held elbow's error grew from 0.031 to 0.081 rad while other joints moved (first_motion.md),
+so this result did not transfer by itself. The same recording on the real arm, with the
+whole arm still, is in Per-joint error and hold drift: 0 counts over 30 s.
 
 ## Known issue: RViz start state
 
@@ -178,9 +179,8 @@ ros2 run so101_bringup moveit_baseline.py --runs 10 --out moveit_baseline_real.c
   ways), and path lengths spread around the 2.1153 rad straight line by -0.13/+0.11 rad.
 - **Final error is tracking error, dominated by gravity.** The STS3215 holds position with
   a proportional loop, so a joint carrying a gravity load settles at an offset that grows
-  with the load. At `zero` the error is 0.084-0.103 rad; at `home` 0.042-0.046 rad. The
-  `zero` error is elbow_flex (from the aborts below); which joint gives the `home` error is
-  not recorded (the CSV stores only the maximum over joints).
+  with the load. At `zero` the error is 0.084-0.103 rad (elbow_flex); at `home`
+  0.042-0.046 rad (shoulder_lift). Per joint: see Per-joint error and hold drift.
 
 ### Elbow goal tolerance
 
@@ -205,6 +205,36 @@ The tolerance was raised to 0.15 rad, above the largest measured sag (0.105 rad)
 failed at 0.1. The tolerance describes the arm as measured; reducing the sag itself
 (servo position gain, or gravity feedforward in the command) is left for the pick-and-place
 error budget.
+
+### Per-joint error and hold drift (2026-11-18)
+
+Question: which joint sets the final error at each pose, how close is each joint to its goal
+tolerance, and does a held joint drift enough to fail MoveIt's 0.01 rad start check?
+
+Method: three times per pose, the baseline script moved the arm to the pose
+(`--runs 2` ends at `home`, `--runs 1` at `zero`), then `joint_range_recorder.py` recorded
+`/joint_states` for 30 s straight after the move, hands off. Error = last recorded position
+minus the pose (rad).
+
+| Joint | Goal tolerance | Error at `home` (3 runs) | Error at `zero` (3 runs) |
+|---|---|---|---|
+| shoulder_pan | 0.02 | +0.0092 | +0.0092 |
+| shoulder_lift | 0.1 | +0.0455 | +0.0215 to +0.0276 |
+| elbow_flex | 0.15 | +0.0047 | +0.0874 to +0.0997 |
+| wrist_flex | 0.05 | -0.0012 to -0.0028 | +0.0307 to +0.0337 |
+| wrist_roll | 0.04 | +0.0107 to +0.0138 | -0.0115 to -0.0161 |
+
+- The `home` error is shoulder_lift; the `zero` error is elbow_flex. The joint with the least
+  margin to its tolerance is wrist_flex at `zero` (0.034 of 0.05). shoulder_pan, which
+  carries no gravity load, ends 6 counts (+0.0092 rad) from its goal at both poses.
+- **No drift.** In all six recordings every arm joint's minimum and maximum over 30 s were
+  equal: no change of even one count (0.0015 rad). A held pose does not drift toward the
+  0.01 rad start tolerance. Sag happens during the move and then holds. Recording starts
+  about 1 s after the trajectory ends (the script's 0.5 s settle, then its exit), so sag that
+  develops in that first second is part of the error, not the drift. The number of messages
+  per recording was not saved. This does not contradict first_motion.md, where the held
+  elbow's error grew while other joints moved and changed its load.
+- All 6 moves succeeded; 13 single-read voltage flags were tolerated, no fault.
 
 ### Servo voltage flag
 
@@ -235,10 +265,8 @@ it, more than the 0.01 rad start check allows. Operating rule: set Start State t
   mock or gz.
 - RTF was not recorded during the baseline runs. The execution-time explanation is
   inferred from the duration/wall-time ratio.
-- Real arm: one session of 10 runs. The final error column records only the largest joint
-  error, so per-joint sag at `home` is not known.
-- Real arm hold drift at a loaded pose was not measured; earlier idle holds at the folded
-  rest pose showed 0 counts drift.
+- Real arm: one session of 10 runs, plus 6 moves for per-joint error and hold drift.
+- Hold drift was recorded for 30 s per hold; longer holds were not measured.
 - The elbow goal tolerance (0.15 rad) is set from this pose pair. Poses with more gravity
   load on the elbow may sag further.
 
@@ -252,3 +280,5 @@ In `data/moveit_baseline/`:
 - `gz_hold_after_move_{1,2,3}.csv`, `gz_hold_idle_{1,2,3}.csv`: latest/min/max per joint
   over 30 s.
 - `moveit_baseline_real.csv`: the 10-run real-arm baseline (same columns).
+- `real_hold_home_{1,2,3}.csv`, `real_hold_zero_{1,2,3}.csv`: latest/min/max per joint over
+  30 s after a move to that pose (real arm).

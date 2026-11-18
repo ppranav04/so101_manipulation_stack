@@ -14,6 +14,7 @@ question, the method, how many runs, the results and the limitations. Raw data (
 | [first_motion.md](first_motion.md) | M2 | 2026-11-10 | 5-joint trajectory: max tracking error 0.097 rad (elbow), final <= 0.02 rad | - |
 | [control_loop.md](control_loop.md) | M2 | 2026-11-11 | 100 Hz loop, period p99 10.255 ms; 24 000 writes, 0 timeouts | - |
 | [moveit_baseline.md](moveit_baseline.md) | M3 | 2026-11-15, 2026-11-17 | 10/10 plan + execute on mock, gz and the real arm; planning median 13-22 ms | [data/moveit_baseline/](data/moveit_baseline/) |
+| [servo_voltage_glitches.md](servo_voltage_glitches.md) | M3 | 2026-11-17 | Undervoltage flag = single-read glitches on IDs 4-6 (also with torque off); debounced, 0 faults in 4 sessions | [data/servo_voltage_glitches/](data/servo_voltage_glitches/) |
 
 ## Conventions
 
