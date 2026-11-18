@@ -27,6 +27,7 @@
         <joint name="gripper" value="1.8"/>
     </group_state>
     <group_state name="close" group="gripper">
+    <!-- 1.0 rad = half open, so tests never squeeze; jaws touch at about -0.2 -->
         <joint name="gripper" value="1"/>
     </group_state>
     <!--END EFFECTOR: Purpose: Represent information about an end effector.-->

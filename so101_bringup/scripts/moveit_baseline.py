@@ -25,8 +25,8 @@ POSES = {
     'zero': [0.0, 0.0, 0.0, 0.0, -1.57],
 }
 
-GOAL_TOLERANCE = 0.001
-SETTLE_S = 0.5
+GOAL_TOLERANCE = 0.001  # rad, per joint, for the planner's goal constraint
+SETTLE_S = 0.5  # s, wait after execution before measuring
 FIELDS = ['run', 'start', 'goal', 'plan_code', 'exec_code', 'planning_time_s',
           'plan_wall_s', 'exec_wall_s', 'traj_duration_s', 'waypoints',
           'path_length_rad', 'final_error_rad']

@@ -1,7 +1,0 @@
-id,joint,reads,voltage_mode_v,reads_below_5v1,min_voltage_v,longest_low_run_reads,flagged_0x01_reads,other_error_reads,temp_mode_c,temp_outlier_reads,max_temp_c,longest_temp_outlier_run_reads,same_read_v_and_t_outlier
-1,shoulder_pan,61279,5.4,0,5.3,0,0,0,32,0,33,0,0
-2,shoulder_lift,61279,5.3,0,5.3,0,0,0,32,0,33,0,0
-3,elbow_flex,61279,5.4,0,5.2,0,0,0,30,0,32,0,0
-4,wrist_flex,61279,5.3,90,4.8,1,0,0,32,25,36,1,0
-5,wrist_roll,61279,5.3,174,4.4,1,0,0,32,184,40,2,0
-6,gripper,61279,5.3,282,3.9,1,4,0,33,313,47,2,0

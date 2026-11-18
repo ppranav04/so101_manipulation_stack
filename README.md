@@ -2,8 +2,8 @@
 
 ROS 2 software stack for the **SO-101** 5-DOF arm: see an object on a table, pick it up, and place it.
 
-> **Status:** M2 complete. Latest release: `v0.2-real-hw`. \
-  **Next:** M3 (MoveIt in sim and on the real arm).
+> **Status:** M3 complete. Latest release: `v0.3-moveit`. \
+  **Next:** M4 (closed-form IK).
 
 **Demo:** the real arm, Gazebo and RViz running the same trajectory.
 
@@ -17,25 +17,28 @@ https://github.com/user-attachments/assets/3eec670b-1465-4dd4-aecc-fa23d8b8ae2a
 | Mock backend (`ros2_control`) + launch test in CI | ✅ `v0.1-sim` |
 | Real hardware driver (C++, STS3215 bus) | ✅ `v0.2-real-hw` |
 | Gazebo Harmonic backend | ✅ `v0.2-real-hw` |
-| MoveIt 2 | ⏳ M3 |
+| MoveIt 2 | ✅ `v0.3-moveit` |
+| Closed-form IK | ⏳ In Progress |
 
 
-## M2 results (real arm)
+## Results
 
-| Measurement | Result | Details |
-|---|---|---|
-| Control loop | 100 Hz, period p50 10.000 ms, p99 10.255 ms, 0 of 11 996 cycles over 15 ms | [control_loop.md](docs/measurements/control_loop.md) |
-| `read()` per cycle (one SYNC READ, 6 servos) | avg 1.25 ms (1.12-3.11 ms) | [control_loop.md](docs/measurements/control_loop.md) |
-| SYNC READ latency | p50 1147-1149 us, p99 1265-1294 us, 0 failures in 6000 | [sync_read_latency.md](docs/measurements/sync_read_latency.md) |
-| WRITE reliability | 24 000 writes, 0 timeouts; 40/40 activations | [control_loop.md](docs/measurements/control_loop.md) |
-| Command-to-motion latency (beyond an ideal plant) | p50 90-100 ms | [control_loop.md](docs/measurements/control_loop.md) |
-| Trajectory tracking, 5-joint trajectory | max error 0.097 rad (elbow), final error <= 0.02 rad | [first_motion.md](docs/measurements/first_motion.md) |
-| Present_Velocity unit | counts/s, fit 0.996-0.997, R^2 >= 0.996 | [velocity_unit.md](docs/measurements/velocity_unit.md) |
-| Joint signs, travel, limits | all signs +1; limits 35 counts inside the measured stops | [joint_limits.md](docs/measurements/joint_limits.md) |
-| Calibration persistence | EEPROM calibration survives power cycles | [calibration_persistence.md](docs/measurements/calibration_persistence.md) |
-| wrist_roll travel | ~338 deg, encoder wrap inside the travel | [wrist_roll_travel.md](docs/measurements/wrist_roll_travel.md) |
-| Long-run stability (30 min) | not measured | |
+**MoveIt 2 (M3):** `home` <-> `zero`, 10 runs per backend, RRTConnect, scaling 0.1.
 
+| | mock | Gazebo | real arm |
+|---|---|---|---|
+| Plan + execute | 10/10 | 10/10 | 10/10 |
+| Planning time, median (max) | 13 (32) ms | 22 (29) ms | 22 (34) ms |
+| Final joint error | <= 0.001 rad | <= 0.001 rad | 0.042-0.103 rad (gravity sag) |
+
+**Driver (M2):**
+
+| Measurement | Result |
+|---|---|
+| Control loop | 100 Hz, p99 period 10.255 ms, 0 of 11 996 cycles over 15 ms |
+| SYNC READ, six servos | p50 1.15 ms, 0 failures in 6000 |
+| Write reliability | 24 000 writes, 0 timeouts |
+| Command-to-motion latency | p50 90-100 ms |
 
 ## Goals
 
@@ -66,8 +69,18 @@ https://github.com/user-attachments/assets/3eec670b-1465-4dd4-aecc-fa23d8b8ae2a
 | `so101_bringup` | ament_cmake | Launch files and shared configuration |
 | `so101_calibration` | ament_python | Camera intrinsics and hand-eye calibration tooling |
 | `so101_perception` | ament_python | Object detection and back-projection |
+| `so101_moveit_config` | ament_cmake | Moveit config files |
 
-`so101_moveit_config` will be generated with the MoveIt Setup Assistant in M3.
+### Known limitations
+
+- **Gravity sag:** the servos hold position with a proportional loop, so loaded joints settle
+  short of their goal (elbow up to 0.10 rad with the arm upright). The elbow goal tolerance
+  is 0.15 rad.
+- **Servo voltage flag:** the last servos in the chain report single-read undervoltage
+  glitches; the driver faults only after 10 consecutive flagged reads.
+- **RViz:** re-select Start State `<current>` before every Plan.
+- **Not measured:** a 30 min soak test.
+
 
 ## Acknowledgements
 
