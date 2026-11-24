@@ -284,10 +284,11 @@ def print_check_e(joints, grid):
                 tilt = min(tilt, np.pi - tilt)
                 if tilt < best_vertical[0]:
                     best_vertical = (tilt, q)
+    pose = {k: round(v, 3) for k, v in best[1].items()}
     print(f'E2 min distance of gripper_link from the pan axis: {best[0] * 1000.0:.3f} mm at '
-          f'{{k: round(v, 3) for k, v in best[1].items()}} ({grid}^3 grid)')
-    print(f'E3 min angle between roll axis and pan axis: {best_vertical[0]:.4f} rad at '
-          f'{{k: round(v, 3) for k, v in best_vertical[1].items()}}')
+          f'{pose} ({grid}^3 grid)')
+    pose = {k: round(v, 3) for k, v in best_vertical[1].items()}
+    print(f'E3 min angle between roll axis and pan axis: {best_vertical[0]:.4f} rad at {pose}')
 
 
 def main():
