@@ -235,7 +235,7 @@ def print_check_c(joints, poses):
     """Check C: planar constants at zero, then rigidity and the angle model at random poses."""
     zero = planar_params(joints, {})
     s = plane_coords(joints, {})['shoulder_lift']
-    print(f'\nC0 shoulder_lift points S (u, v) [mm]: {np.round(s * 1000.0, 3)}')
+    print(f'\nC0 shoulder_lift point S (u, v) [mm]: {np.round(s * 1000.0, 3)}')
     for label, (length, alpha) in zero.items():
         print(f'C1 {label} = {length * 1000.0:9.3f} mm  alpha = {alpha:+.6f} rad')
     worst_len = 0.0
@@ -291,6 +291,41 @@ def print_check_e(joints, grid):
     print(f'E3 min angle between roll axis and pan axis: {best_vertical[0]:.4f} rad at {pose}')
 
 
+def tip_to_tcp(joints, q):
+    """Return T_gripper_link_TCP at q: the TCP pose in the MoveIt tip frame."""
+    frames = joint_frames(joints, TIP, q)
+    t_tip = frames['wrist_roll'][1]
+    t_tcp = frames['gripper_frame_joint'][1]
+    return np.linalg.inv(t_tip) @ t_tcp
+
+
+def print_check_d(joints, poses):
+    """Check D: the fixed gripper_link -> TCP offset, and why the IK targets gripper_link."""
+    rel = tip_to_tcp(joints, {})
+    p = rel[:3, 3]
+    radial = np.hypot(p[0], p[1])
+    flip = angle_between(rel[:3, 2], np.array([0.0, 0.0, 1.0]))
+    print(f'\nD1 TCP in gripper_link [mm]: {np.round(p * 1000.0, 3)}')
+    print(f'D1 along roll axis (z): {p[2] * 1000.0:+.3f} mm, off roll axis: {radial * 1000.0:.3f} mm')
+    print(f'D1 angle between TCP z and gripper_link z: {flip:.6f} rad (pi = opposite)')
+    worst = max(np.abs(tip_to_tcp(joints, q) - rel).max() for q in poses)
+    print(f'D2 max change of T_gripper_link_TCP over {len(poses)} poses: {worst:.2e} (fixed)')
+    by_name = {j.name: j for j in joints.values()}
+    roll = by_name['wrist_roll']
+    q = dict(poses[0])
+    tips = []
+    tcps = []
+    for angle in np.linspace(roll.lower, roll.upper, 37):
+        q['wrist_roll'] = angle
+        frames = joint_frames(joints, TIP, q)
+        tips.append(frames['wrist_roll'][1][:3, 3])
+        tcps.append(frames['gripper_frame_joint'][1][:3, 3])
+    tip_move = max(np.linalg.norm(t - tips[0]) for t in tips)
+    tcp_move = max(np.linalg.norm(t - tcps[0]) for t in tcps)
+    print(f'D3 sweep wrist_roll over its limits: gripper_link moves {tip_move * 1000.0:.4f} mm, '
+          f'TCP moves {tcp_move * 1000.0:.3f} mm')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('urdf', help='expanded URDF file (xacro output)')
@@ -304,6 +339,7 @@ def main():
     print_table_a(joints)
     print_check_b(joints, poses)
     print_check_c(joints, poses[1:])
+    print_check_d(joints, poses[1:])
     print_check_e(joints, args.grid)
     return 0
 
